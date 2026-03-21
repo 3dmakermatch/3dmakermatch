@@ -1,0 +1,19 @@
+{
+  "name": "3dMakerMatch",
+  "description": "Hyper-local 3D printing marketplace connecting designers with expert printer operators",
+  "research": {
+    "path": "./research",
+    "enabled": true
+  },
+  "app": {
+    "enabled": true,
+    "compose_service": "app",
+    "port": 3000,
+    "health_check": "/api/health"
+  },
+  "marketing": {
+    "enabled": true
+  },
+  "default_branch": "main",
+  "build_command": "docker compose up -d --build"
+}

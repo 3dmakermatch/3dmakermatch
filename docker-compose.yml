@@ -1,0 +1,70 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 3dmakermatch-app
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://printbid:printbid@db:5432/printbid?schema=public
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.3dmakermatch.rule=Host(`app.3dmakermatch.dev.christofferson.family`)"
+      - "traefik.http.routers.3dmakermatch.entrypoints=web"
+      - "traefik.http.routers.3dmakermatch.middlewares=oauth-auth"
+      - "traefik.http.services.3dmakermatch.loadbalancer.server.port=3000"
+    networks:
+      - proxy-net
+      - internal
+
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: 3dmakermatch-db
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: printbid
+      POSTGRES_PASSWORD: printbid
+      POSTGRES_DB: printbid
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U printbid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: 3dmakermatch-redis
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+
+networks:
+  proxy-net:
+    external: true
+  internal:
+    driver: bridge

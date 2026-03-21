@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  buyer
+  printer
+  admin
+}
+
+enum JobStatus {
+  draft
+  bidding
+  active
+  completed
+  cancelled
+}
+
+enum BidStatus {
+  pending
+  accepted
+  rejected
+  withdrawn
+}
+
+enum OrderStatus {
+  paid
+  printing
+  shipped
+  delivered
+  confirmed
+  disputed
+  refunded
+}
+
+enum DisputeStatus {
+  open
+  under_review
+  resolved
+  closed
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique @db.VarChar(255)
+  passwordHash   String    @map("password_hash")
+  fullName       String    @map("full_name") @db.VarChar(100)
+  role           UserRole  @default(buyer)
+  googleId       String?   @unique @map("google_id")
+  stripeCustomerId  String? @map("stripe_customer_id") @db.VarChar(100)
+  refreshToken   String?   @map("refresh_token")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  printer        Printer?
+  printJobs      PrintJob[]
+  sentMessages   Message[] @relation("sender")
+  receivedMessages Message[] @relation("receiver")
+  reviewsGiven   Review[]  @relation("reviewer")
+  reviewsReceived Review[] @relation("reviewee")
+  buyerOrders    Order[]   @relation("buyer")
+  disputes       Dispute[]
+
+  @@map("users")
+}
+
+model Printer {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @unique @map("user_id") @db.Uuid
+  bio            String?
+  addressCity    String?   @map("address_city") @db.VarChar(100)
+  addressState   String?   @map("address_state") @db.VarChar(100)
+  latitude       Float?
+  longitude      Float?
+  trustScore     Int       @default(500) @map("trust_score")
+  isVerified     Boolean   @default(false) @map("is_verified")
+  capabilities   Json      @default("{}")
+  averageRating  Float     @default(0) @map("average_rating") @db.DoublePrecision
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bids           Bid[]
+  orders         Order[]
+  benchmarks     PrinterBenchmark[]
+
+  @@map("printers")
+}
+
+model PrintJob {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  title             String    @db.VarChar(200)
+  description       String?
+  fileUrl           String    @map("file_url")
+  thumbnailUrl      String?   @map("thumbnail_url")
+  materialPreferred String?   @map("material_preferred") @db.VarChar(50)
+  quantity          Int       @default(1)
+  status            JobStatus @default(bidding)
+  fileMetadata      Json?     @map("file_metadata")
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user              User      @relation(fields: [userId], references: [id])
+  bids              Bid[]
+  order             Order?
+  messages          Message[]
+
+  @@index([status, expiresAt], map: "idx_jobs_status_expiry")
+  @@map("print_jobs")
+}
+
+model Bid {
+  id               String    @id @default(uuid()) @db.Uuid
+  jobId            String    @map("job_id") @db.Uuid
+  printerId        String    @map("printer_id") @db.Uuid
+  amountCents      Int       @map("amount_cents")
+  shippingCostCents Int      @default(0) @map("shipping_cost_cents")
+  estimatedDays    Int       @map("estimated_days")
+  message          String?
+  status           BidStatus @default(pending)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  job              PrintJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  printer          Printer   @relation(fields: [printerId], references: [id])
+  order            Order?
+
+  @@unique([jobId, printerId])
+  @@map("bids")
+}
+
+model Order {
+  id                    String      @id @default(uuid()) @db.Uuid
+  jobId                 String      @unique @map("job_id") @db.Uuid
+  bidId                 String      @unique @map("bid_id") @db.Uuid
+  buyerId               String      @map("buyer_id") @db.Uuid
+  printerId             String      @map("printer_id") @db.Uuid
+  stripePaymentIntentId String?     @map("stripe_payment_intent_id") @db.VarChar(100)
+  status                OrderStatus @default(paid)
+  trackingNumber        String?     @map("tracking_number") @db.VarChar(100)
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  job                   PrintJob    @relation(fields: [jobId], references: [id])
+  bid                   Bid         @relation(fields: [bidId], references: [id])
+  buyer                 User        @relation("buyer", fields: [buyerId], references: [id])
+  printer               Printer     @relation(fields: [printerId], references: [id])
+  review                Review?
+  disputes              Dispute[]
+
+  @@map("orders")
+}
+
+model Review {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @unique @map("order_id") @db.Uuid
+  reviewerId  String   @map("reviewer_id") @db.Uuid
+  revieweeId  String   @map("reviewee_id") @db.Uuid
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  order       Order    @relation(fields: [orderId], references: [id])
+  reviewer    User     @relation("reviewer", fields: [reviewerId], references: [id])
+  reviewee    User     @relation("reviewee", fields: [revieweeId], references: [id])
+
+  @@map("reviews")
+}
+
+model Message {
+  id         String   @id @default(uuid()) @db.Uuid
+  jobId      String   @map("job_id") @db.Uuid
+  senderId   String   @map("sender_id") @db.Uuid
+  receiverId String   @map("receiver_id") @db.Uuid
+  content    String
+  isRead     Boolean  @default(false) @map("is_read")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  job        PrintJob @relation(fields: [jobId], references: [id])
+  sender     User     @relation("sender", fields: [senderId], references: [id])
+  receiver   User     @relation("receiver", fields: [receiverId], references: [id])
+
+  @@map("messages")
+}
+
+model Dispute {
+  id         String        @id @default(uuid()) @db.Uuid
+  orderId    String        @map("order_id") @db.Uuid
+  creatorId  String        @map("creator_id") @db.Uuid
+  reason     String
+  status     DisputeStatus @default(open)
+  resolution String?
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  order      Order         @relation(fields: [orderId], references: [id])
+  creator    User          @relation(fields: [creatorId], references: [id])
+
+  @@map("disputes")
+}
+
+model PrinterBenchmark {
+  id            String   @id @default(uuid()) @db.Uuid
+  printerId     String   @map("printer_id") @db.Uuid
+  testModelName String   @map("test_model_name") @db.VarChar(100)
+  scores        Json
+  videoUrl      String?  @map("video_url")
+  verifiedAt    DateTime @default(now()) @map("verified_at") @db.Timestamptz()
+
+  printer       Printer  @relation(fields: [printerId], references: [id])
+
+  @@map("printer_benchmarks")
+}
