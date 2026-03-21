@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrintBid - The 3D Printing Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0a0a;
+            --bg-card: #1a1a1a;
+            --bg-light: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent-indigo: #6366f1;
+            --accent-cyan: #22d3ee;
+            --accent-indigo-dark: #4f46e5;
+            --border-color: #333333;
+            --success: #10b981;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-indigo);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            padding: 1rem 2rem;
+            transition: all 0.3s ease;
+        }
+
+        nav.scrolled {
+            background: rgba(10, 10, 10, 0.98);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.1);
+            padding: 0.75rem 2rem;
+        }
+
+        nav-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-indigo);
+            transition: width 0.3s ease;
+        }
+
+        nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            nav-links {
+                display: none;
+            }
+
+            nav-content {
+                padding: 0.5rem 0;
+            }
+        }
+
+        /* Buttons */
+        button, .btn {
+            font-family: 'Inter', sans-serif;
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-indigo-dark));
+            color: white;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--accent-cyan);
+            border: 2px solid var(--accent-cyan);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(34, 211, 238, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(34, 211, 238, 0.2);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-indigo);
+            color: var(--accent-indigo);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 2rem;
+            margin-top: 60px;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.15), transparent);
+            border-radius: 50%;
+            top: -200px;
+            right: -150px;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(34, 211, 238, 0.1), transparent);
+            border-radius: 50%;
+            bottom: -100px;
+            left: -100px;
+            animation: float 8s ease-in-out infinite reverse;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(30px);
+            }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+            animation: fadeInUp 1s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 8vw, 4rem);
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            line-height: 1.8;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 4rem;
+            animation: fadeIn 1.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .hero-visual {
+            position: relative;
+            height: 300px;
+            margin-top: 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 3D Printer Icon SVG */
+        .printer-icon {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            animation: printerFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes printerFloat {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        /* Sections */
+        section {
+            padding: 4rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        section.light {
+            background: linear-gradient(180deg, transparent, rgba(99, 102, 241, 0.05));
+        }
+
+        section h2 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        section > p {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .accent-text {
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* How It Works */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .step-card {
+            background: linear-gradient(135deg, var(--bg-card), rgba(34, 211, 238, 0.05));
+            border: 1px solid var(--border-color);
+            padding: 2.5rem 2rem;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-indigo), var(--accent-cyan));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+
+        .step-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .step-card:hover {
+            border-color: var(--accent-indigo);
+            transform: translateY(-8px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.05));
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+            border-radius: 50%;
+            font-weight: 800;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .step-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .step-card p {
+            color: var(--text-secondary);
+            line-height: 1.8;
+        }
+
+        /* For Printers Section */
+        .printers-section {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.05));
+            border-radius: 16px;
+            padding: 3rem;
+            margin-top: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .printers-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.1), transparent);
+            border-radius: 50%;
+        }
+
+        .printers-content {
+            position: relative;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            .printers-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .printers-content h3 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            font-weight: 800;
+        }
+
+        .benefits-list {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .benefits-list li {
+            padding: 0.75rem 0;
+            padding-left: 2rem;
+            position: relative;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .benefits-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            font-size: 1.2rem;
+        }
+
+        .benefits-list li:hover {
+            color: var(--text-primary);
+            padding-left: 2.5rem;
+        }
+
+        /* Stats Section */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(34, 211, 238, 0.1));
+            border-color: var(--accent-indigo);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(99, 102, 241, 0.1);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, var(--bg-card), rgba(34, 211, 238, 0.03));
+            border: 1px solid var(--border-color);
+            padding: 2rem;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .feature-card:hover::after {
+            left: 100%;
+        }
+
+        .feature-card:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.08));
+            border-color: var(--accent-cyan);
+            transform: translateY(-8px);
+            box-shadow: 0 16px 40px rgba(99, 102, 241, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.75rem;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Waitlist Section */
+        .waitlist-section {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(34, 211, 238, 0.1));
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            margin-top: 4rem;
+        }
+
+        .waitlist-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.2), transparent);
+            border-radius: 50%;
+        }
+
+        .waitlist-content {
+            position: relative;
+            z-index: 2;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .waitlist-section h2 {
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+
+        .waitlist-section p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .email-form {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .email-form input {
+            flex: 1;
+            min-width: 250px;
+            padding: 0.95rem 1.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .email-form input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .email-form input:focus {
+            outline: none;
+            border-color: var(--accent-indigo);
+            background: rgba(99, 102, 241, 0.1);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .email-form button {
+            padding: 0.95rem 2.5rem;
+            white-space: nowrap;
+        }
+
+        .waitlist-note {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-color);
+            padding: 3rem 2rem 1.5rem;
+            margin-top: 4rem;
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-column h4 {
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .footer-column a {
+            display: block;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .footer-column a:hover {
+            color: var(--accent-indigo);
+        }
+
+        .footer-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .footer-copyright {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .social-links a {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        .social-links a:hover {
+            color: var(--accent-indigo);
+            transform: translateY(-3px);
+        }
+
+        /* Scroll reveal animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem;
+            }
+
+            .hero {
+                margin-top: 80px;
+                padding: 1rem;
+            }
+
+            section {
+                padding: 3rem 1.5rem;
+            }
+
+            .printers-content {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .hero-buttons button {
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .email-form {
+                flex-direction: column;
+            }
+
+            .email-form input {
+                min-width: unset;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="navbar">
+        <nav-content>
+            <div class="logo">PrintBid</div>
+            <nav-links>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#for-printers">For Printers</a>
+                <a href="#features">Features</a>
+            </nav-links>
+            <div class="nav-buttons">
+                <button class="btn btn-outline">Sign In</button>
+                <button class="btn btn-primary">Get Started</button>
+            </div>
+        </nav-content>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Your Design. Printed by Experts. Delivered to Your Door.</h1>
+            <p>The high-trust, expert-verified marketplace for 3D printing. Upload your file, get competitive bids from verified printers, and choose the best offer by price, speed, reviews, or proximity. Backed by our PrintBid Guarantee and Trust Index scoring.</p>
+
+            <div class="hero-buttons">
+                <button class="btn btn-primary">Get Your Print Quote</button>
+                <button class="btn btn-secondary">Start Printing & Earning</button>
+            </div>
+
+            <div class="hero-visual">
+                <svg class="printer-icon" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Base -->
+                    <rect x="50" y="200" width="200" height="60" fill="none" stroke="#6366f1" stroke-width="2" rx="4"/>
+
+                    <!-- Main chamber -->
+                    <rect x="80" y="80" width="140" height="120" fill="none" stroke="#22d3ee" stroke-width="2" rx="4"/>
+
+                    <!-- Layers (printing effect) -->
+                    <rect x="90" y="100" width="120" height="8" fill="#6366f1" opacity="0.3" rx="2"/>
+                    <rect x="90" y="115" width="120" height="8" fill="#6366f1" opacity="0.5" rx="2"/>
+                    <rect x="90" y="130" width="120" height="8" fill="#22d3ee" opacity="0.7" rx="2"/>
+
+                    <!-- Nozzle -->
+                    <circle cx="150" cy="145" r="6" fill="#22d3ee"/>
+                    <rect x="145" y="145" width="10" height="25" fill="none" stroke="#22d3ee" stroke-width="1.5" rx="2"/>
+
+                    <!-- Corner supports -->
+                    <line x1="70" y1="80" x2="70" y2="200" stroke="#6366f1" stroke-width="2"/>
+                    <line x1="230" y1="80" x2="230" y2="200" stroke="#6366f1" stroke-width="2"/>
+
+                    <!-- Top frame -->
+                    <rect x="70" y="60" width="160" height="25" fill="none" stroke="#22d3ee" stroke-width="2" rx="3"/>
+
+                    <!-- Accent details -->
+                    <circle cx="100" cy="200" r="4" fill="#10b981"/>
+                    <circle cx="150" cy="200" r="4" fill="#10b981"/>
+                    <circle cx="200" cy="200" r="4" fill="#10b981"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="light">
+        <h2>How It Works</h2>
+        <p>Three simple steps to get your design manufactured or start earning from your printer</p>
+
+        <div class="steps-grid">
+            <div class="step-card reveal">
+                <div class="step-number">1</div>
+                <h3>Upload Your Design</h3>
+                <p>Drop your STL, 3MF, or OBJ file, or browse thousands of ready-to-print designs from our integrated catalog.</p>
+            </div>
+
+            <div class="step-card reveal">
+                <div class="step-number">2</div>
+                <h3>Get Competitive Bids</h3>
+                <p>Local and remote printers compete for your job. Compare by price, speed, reviews, and materials.</p>
+            </div>
+
+            <div class="step-card reveal">
+                <div class="step-number">3</div>
+                <h3>Choose & Receive</h3>
+                <p>Pick the bid that works for you. Your printer prints and ships directly to your door.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- For Printers Section -->
+    <section id="for-printers">
+        <div class="printers-section reveal">
+            <div class="printers-content">
+                <div>
+                    <h3>Turn Your Idle Printer Into Income</h3>
+                    <ul class="benefits-list">
+                        <li>Earn 50-70% gross margins on every print</li>
+                        <li>Choose which jobs to bid on — you're in control</li>
+                        <li>Build your reputation with verified reviews</li>
+                        <li>0% commission for founding printers (first 6 months)</li>
+                    </ul>
+                    <button class="btn btn-secondary">Register Your Printer</button>
+                </div>
+                <div style="text-align: center; font-size: 4rem;">
+                    💰
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="light" style="text-align: center;">
+        <h2>The Market Is Ready</h2>
+        <div class="stats-grid reveal">
+            <div class="stat-card">
+                <div class="stat-number">$30B+</div>
+                <div class="stat-label">3D Printing Market (2025)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">34K+</div>
+                <div class="stat-label">Monthly Searches for Services</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">50-70%</div>
+                <div class="stat-label">Gross Margin for Printers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">0%</div>
+                <div class="stat-label">Fees for Founding Printers</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why PrintBid Section -->
+    <section id="why-printbid">
+        <h2>Why Not Just Use Xometry or Craftcloud?</h2>
+        <p style="max-width: 700px; margin: 0 auto 2rem; color: #a1a1a6;">They use algorithms. We use experts.</p>
+        <div class="steps-grid">
+            <div class="step-card reveal">
+                <div class="step-number" style="background: #ef4444;">!</div>
+                <h3>The "Instant Quote" Tax</h3>
+                <p>Algorithms overcharge 20-50% to cover failure risk. A human bidder who reviews your file can price it accurately and underbid significantly on parts they know they can nail.</p>
+            </div>
+            <div class="step-card reveal">
+                <div class="step-number" style="background: #f59e0b;">?</div>
+                <h3>Black Box Fulfillment</h3>
+                <p>On Xometry, you never know who prints your part. On PrintBid, you pick "Steve's Pro Lab" based on 500+ reviews and a verified Trust Score.</p>
+            </div>
+            <div class="step-card reveal">
+                <div class="step-number" style="background: #10b981;">$</div>
+                <h3>Idle Capacity Pricing</h3>
+                <p>A printer owner with machines idle on Tuesday bids $20 for the same part an industrial hub charges $50+. You get better prices because printers compete.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features">
+        <h2>Everything You Need</h2>
+        <p>Complete platform features designed for both customers and printers</p>
+
+        <div class="features-grid">
+            <div class="feature-card reveal">
+                <div class="feature-icon">🎯</div>
+                <h3>Competitive Bidding</h3>
+                <p>Printers bid on your projects, driving quality and value.</p>
+            </div>
+
+            <div class="feature-card reveal">
+                <div class="feature-icon">✓</div>
+                <h3>Trust Index Scoring</h3>
+                <p>Every printer earns a 0-1000 Trust Score based on quality, reliability, and response time. Benchmark-tested before their first bid.</p>
+            </div>
+
+            <div class="feature-card reveal">
+                <div class="feature-icon">📋</div>
+                <h3>Smart File Validation</h3>
+                <p>Automated STL/3MF analysis with Manifold mesh repair, printability checks, and instant cost estimates before bidding.</p>
+            </div>
+
+            <div class="feature-card reveal">
+                <div class="feature-icon">🔗</div>
+                <h3>Thingiverse Integration</h3>
+                <p>Access millions of ready-to-print designs directly.</p>
+            </div>
+
+            <div class="feature-card reveal">
+                <div class="feature-icon">🔒</div>
+                <h3>PrintBid Guarantee</h3>
+                <p>Escrow-protected payments with our quality guarantee. If a print fails QC, we cover the reprint. No risk for buyers.</p>
+            </div>
+
+            <div class="feature-card reveal">
+                <div class="feature-icon">📍</div>
+                <h3>Real-time Tracking</h3>
+                <p>Track your print from job start to delivery.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Waitlist Section -->
+    <section class="light" style="padding: 0;">
+        <div class="waitlist-section reveal">
+            <div class="waitlist-content">
+                <h2>Be First to Join PrintBid</h2>
+                <p>Get early access and exclusive benefits as a founding member.</p>
+
+                <form class="email-form" onsubmit="event.preventDefault(); alert('Thank you for joining the waitlist!');">
+                    <input type="email" placeholder="you@example.com" required>
+                    <button type="submit" class="btn btn-primary">Join Waitlist</button>
+                </form>
+
+                <p class="waitlist-note">We'll keep you updated on launch and new features. No spam, promise.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-column">
+                <h4>Product</h4>
+                <a href="#">For Customers</a>
+                <a href="#">For Printers</a>
+                <a href="#">Pricing</a>
+                <a href="#">How It Works</a>
+            </div>
+
+            <div class="footer-column">
+                <h4>Company</h4>
+                <a href="#">About Us</a>
+                <a href="#">Blog</a>
+                <a href="#">Careers</a>
+                <a href="#">Contact</a>
+            </div>
+
+            <div class="footer-column">
+                <h4>Resources</h4>
+                <a href="#">Help Center</a>
+                <a href="#">Documentation</a>
+                <a href="#">API Docs</a>
+                <a href="#">Status</a>
+            </div>
+
+            <div class="footer-column">
+                <h4>Legal</h4>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+                <a href="#">Cookie Policy</a>
+                <a href="#">Compliance</a>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div class="footer-copyright">© 2026 PrintBid. All rights reserved.</div>
+            <div class="social-links">
+                <a href="#" title="Twitter">𝕏</a>
+                <a href="#" title="LinkedIn">in</a>
+                <a href="#" title="GitHub">gh</a>
+                <a href="#" title="Discord">◆</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        let lastScroll = 0;
+
+        window.addEventListener('scroll', () => {
+            const currentScroll = window.pageYOffset;
+
+            if (currentScroll > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+
+            lastScroll = currentScroll;
+        });
+
+        // Intersection Observer for scroll reveal animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        // Observe all reveal elements
+        document.querySelectorAll('.reveal').forEach(element => {
+            observer.observe(element);
+        });
+
+        // Smooth scroll for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (href !== '#') {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                }
+            });
+        });
+
+        // Button interactions
+        document.querySelectorAll('.btn').forEach(button => {
+            button.addEventListener('mousedown', function() {
+                this.style.transform = 'scale(0.98)';
+            });
+
+            button.addEventListener('mouseup', function() {
+                this.style.transform = '';
+            });
+        });
+
+        // Parallax effect on hero section
+        const heroSection = document.querySelector('.hero');
+        window.addEventListener('scroll', () => {
+            const scrollPosition = window.pageYOffset;
+            if (scrollPosition < window.innerHeight) {
+                heroSection.style.backgroundPosition = `0 ${scrollPosition * 0.5}px`;
+            }
+        });
+    </script>
+</body>
+</html>

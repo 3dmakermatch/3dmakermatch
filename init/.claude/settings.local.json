@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developer.semrush.com)",
+      "mcp__gemini-cli__ask-gemini",
+      "Bash(do echo:*)"
+    ]
+  }
+}
