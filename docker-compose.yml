@@ -11,8 +11,9 @@ services:
       - PORT=3000
       - DATABASE_URL=postgresql://printbid:printbid@db:5432/printbid?schema=public
       - REDIS_URL=redis://redis:6379
-    env_file:
-      - .env
+      - JWT_SECRET=${JWT_SECRET:-3dmakermatch-jwt-secret-change-in-prod}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-3dmakermatch-refresh-secret-change-in-prod}
+      - CLIENT_URL=https://app.3dmakermatch.dev.christofferson.family
     depends_on:
       db:
         condition: service_healthy
