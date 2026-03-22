@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import rawBody from 'fastify-raw-body';
 import { PrismaClient } from '@prisma/client';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
@@ -12,6 +13,7 @@ import { bidRoutes } from './routes/bids.js';
 import { messageRoutes } from './routes/messages.js';
 import { orderRoutes } from './routes/orders.js';
 import { reviewRoutes } from './routes/reviews.js';
+import { paymentWebhookRoutes } from './routes/payments.js';
 import { startFileProcessingWorker } from './services/queue.js';
 
 const prisma = new PrismaClient();
@@ -52,6 +54,12 @@ async function start() {
     timeWindow: '1 minute',
   });
 
+  await app.register(rawBody, {
+    global: false,
+    encoding: false,
+    runFirst: true,
+  });
+
   // Accept raw binary uploads
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => {
     done(null, body);
@@ -72,6 +80,7 @@ async function start() {
   await app.register(messageRoutes, { prefix: '/api/v1/messages' });
   await app.register(orderRoutes, { prefix: '/api/v1/orders' });
   await app.register(reviewRoutes, { prefix: '/api/v1' });
+  await app.register(paymentWebhookRoutes, { prefix: '/api/v1/payments' });
 
   // Start file processing worker
   const worker = startFileProcessingWorker(prisma);

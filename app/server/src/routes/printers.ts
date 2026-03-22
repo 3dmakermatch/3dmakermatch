@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { createConnectAccount } from '../services/stripe.js';
 
 const createPrinterSchema = z.object({
   bio: z.string().max(2000).optional(),
@@ -112,6 +113,26 @@ export async function printerRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Printer not found', code: 404 });
     }
     return printer;
+  });
+
+  // Stripe Connect onboarding
+  app.post('/stripe/onboard', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findFirst({
+        where: { userId: request.userId! },
+        include: { user: true },
+      });
+      if (!printer) return reply.status(404).send({ error: 'Printer profile not found', code: 404 });
+      if (printer.stripeAccountId) return reply.status(400).send({ error: 'Already onboarded', code: 400 });
+
+      const { accountId, onboardingUrl } = await createConnectAccount(printer.id, printer.user.email);
+      await app.prisma.printer.update({
+        where: { id: printer.id },
+        data: { stripeAccountId: accountId },
+      });
+      return { onboardingUrl };
+    },
   });
 
   // Update printer profile

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { createRefund } from '../services/stripe.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['printing', 'shipped', 'delivered']),
@@ -112,6 +113,22 @@ export async function orderRoutes(app: FastifyInstance) {
 
       const updated = await app.prisma.order.findUnique({ where: { id: order.id } });
       return updated;
+    },
+  });
+
+  // Refund (buyer only, pre-shipment)
+  app.post<{ Params: { id: string } }>('/:id/refund', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const order = await app.prisma.order.findUnique({ where: { id: request.params.id } });
+      if (!order) return reply.status(404).send({ error: 'Order not found', code: 404 });
+      if (order.buyerId !== request.userId) return reply.status(403).send({ error: 'Only buyer can request refund', code: 403 });
+      if (!['paid', 'printing'].includes(order.status)) {
+        return reply.status(400).send({ error: 'Order cannot be refunded at this stage', code: 400 });
+      }
+      if (order.stripePaymentIntentId) await createRefund(order.stripePaymentIntentId);
+      await app.prisma.order.update({ where: { id: order.id }, data: { status: 'refunded' } });
+      return { refunded: true };
     },
   });
 
