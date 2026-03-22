@@ -3,9 +3,13 @@ import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { generatePresignedUploadUrl, validateFileUpload } from '../services/s3.js';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 const presignSchema = z.object({
   fileName: z.string().min(1).max(255),
-  fileSize: z.number().int().min(1).max(50 * 1024 * 1024),
+  fileSize: z.number().int().min(1).max(MAX_FILE_SIZE, {
+    message: `File size exceeds 50MB limit`,
+  }),
 });
 
 export async function uploadRoutes(app: FastifyInstance) {

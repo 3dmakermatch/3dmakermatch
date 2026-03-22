@@ -22,6 +22,10 @@ export default function CreateJob() {
       setError('Please select a 3D model file');
       return;
     }
+    if (file.size > 50 * 1024 * 1024) {
+      setError('File size exceeds 50MB limit');
+      return;
+    }
     setError('');
     setUploading(true);
 
