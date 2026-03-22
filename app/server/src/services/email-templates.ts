@@ -188,6 +188,30 @@ export function newMessageEmail(
   return { subject, html };
 }
 
+export function jobDigestEmail(
+  printerName: string,
+  jobs: Array<{ title: string; id: string; materials: string[] }>,
+): { subject: string; html: string } {
+  const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+  const jobList = jobs
+    .map(
+      j =>
+        `<li><a href="${CLIENT_URL}/jobs/${j.id}">${j.title}</a> — ${j.materials.join(', ') || 'Any material'}</li>`,
+    )
+    .join('');
+  return {
+    subject: `${jobs.length} new print job${jobs.length > 1 ? 's' : ''} matching your skills`,
+    html: baseLayout(`
+      <h2 style="margin:0 0 16px;color:#111827;font-size:22px;">Hi ${printerName},</h2>
+      <p style="color:#374151;line-height:1.6;">Here are new print jobs that match your capabilities:</p>
+      <ul style="color:#374151;line-height:1.8;">${jobList}</ul>
+      <p style="margin:24px 0;">
+        ${button('View All Jobs', `${CLIENT_URL}/jobs`)}
+      </p>
+    `),
+  };
+}
+
 export function reviewReceivedEmail(
   jobTitle: string,
   rating: number,
