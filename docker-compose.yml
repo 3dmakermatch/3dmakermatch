@@ -23,7 +23,6 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.3dmakermatch.rule=Host(`app.3dmakermatch.dev.christofferson.family`)"
       - "traefik.http.routers.3dmakermatch.entrypoints=web"
-      - "traefik.http.routers.3dmakermatch.middlewares=oauth-auth"
       - "traefik.http.services.3dmakermatch.loadbalancer.server.port=3000"
     networks:
       - proxy-net
