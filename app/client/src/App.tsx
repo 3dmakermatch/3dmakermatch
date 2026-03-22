@@ -15,6 +15,11 @@ import ReviewForm from './pages/ReviewForm';
 import AuthCallback from './pages/AuthCallback';
 import NotificationSettings from './pages/NotificationSettings';
 import UnsubscribeConfirm from './pages/UnsubscribeConfirm';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminJobs from './pages/admin/AdminJobs';
+import AdminDisputes from './pages/admin/AdminDisputes';
 
 export default function App() {
   return (
@@ -34,6 +39,12 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
         <Route path="/unsubscribe" element={<UnsubscribeConfirm />} />
+      </Route>
+      <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+        <Route index element={<AdminDashboard />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="jobs" element={<AdminJobs />} />
+        <Route path="disputes" element={<AdminDisputes />} />
       </Route>
     </Routes>
   );
