@@ -5,6 +5,7 @@ import { createRefund } from '../services/stripe.js';
 import { sendEmail } from '../services/email.js';
 import { orderStatusEmail } from '../services/email-templates.js';
 import { notifyUser } from '../services/websocket.js';
+import { recalculateTrustScore } from '../services/trust.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['printing', 'shipped', 'delivered']),
@@ -193,6 +194,9 @@ export async function orderRoutes(app: FastifyInstance) {
         sendEmail({ to: printerRecord.user.email, subject: tpl.subject, html: tpl.html, category: 'orders', userId: printerRecord.user.id, userPrefs: printerRecord.user.emailPreferences as any }).catch(() => {});
         notifyUser(printerRecord.user.id, { type: 'order:status', data: { orderId: order.id, status: 'confirmed' } });
       }
+
+      // Recalculate trust score now that a new confirmed order exists
+      recalculateTrustScore(app.prisma, order.printerId).catch(() => {});
 
       return updated;
     },

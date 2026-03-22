@@ -16,6 +16,7 @@ import { reviewRoutes } from './routes/reviews.js';
 import { paymentWebhookRoutes } from './routes/payments.js';
 import { notificationPrefRoutes } from './routes/notification-prefs.js';
 import { startFileProcessingWorker } from './services/queue.js';
+import { startTrustDecayWorker } from './services/trust-decay-worker.js';
 import { setupWebSocket } from './services/websocket.js';
 
 const prisma = new PrismaClient();
@@ -91,6 +92,9 @@ async function start() {
   // Start file processing worker
   const worker = startFileProcessingWorker(prisma);
 
+  // Start trust decay worker (runs daily at midnight)
+  const trustDecayWorker = startTrustDecayWorker(prisma);
+
   // Serve static files in production
   if (process.env.NODE_ENV === 'production') {
     const path = await import('path');
@@ -110,6 +114,7 @@ async function start() {
   const shutdown = async () => {
     app.log.info('Shutting down...');
     await worker.close();
+    await trustDecayWorker.close();
     await prisma.$disconnect();
     await app.close();
     process.exit(0);

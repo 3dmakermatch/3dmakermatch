@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { sendEmail } from '../services/email.js';
 import { reviewReceivedEmail } from '../services/email-templates.js';
 import { notifyUser } from '../services/websocket.js';
+import { recalculateTrustScore } from '../services/trust.js';
 
 const createReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -77,6 +78,9 @@ export async function reviewRoutes(app: FastifyInstance) {
         sendEmail({ to: revieweeUser.email, subject: tpl.subject, html: tpl.html, category: 'reviews', userId: revieweeUser.id, userPrefs: revieweeUser.emailPreferences as any }).catch(() => {});
         notifyUser(revieweeUser.id, { type: 'review:new', data: { reviewId: review.id, orderId: order.id } });
       }
+
+      // Recalculate trust score now that a new review has been recorded
+      recalculateTrustScore(app.prisma, order.printerId).catch(() => {});
 
       return reply.status(201).send(review);
     },
