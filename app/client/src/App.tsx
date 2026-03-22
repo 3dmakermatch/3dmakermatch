@@ -7,6 +7,9 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import PrinterProfile from './pages/PrinterProfile';
 import PrinterList from './pages/PrinterList';
+import JobList from './pages/JobList';
+import JobDetail from './pages/JobDetail';
+import CreateJob from './pages/CreateJob';
 
 export default function App() {
   return (
@@ -17,6 +20,16 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/printers" element={<PrinterList />} />
         <Route path="/printers/:id" element={<PrinterProfile />} />
+        <Route path="/jobs" element={<JobList />} />
+        <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route
+          path="/jobs/new"
+          element={
+            <ProtectedRoute>
+              <CreateJob />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard"
           element={

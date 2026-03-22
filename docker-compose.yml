@@ -8,12 +8,16 @@ services:
     mem_limit: 1g
     environment:
       - NODE_ENV=production
+      - STORAGE_MODE=${STORAGE_MODE:-local}
       - PORT=3000
       - DATABASE_URL=postgresql://printbid:printbid@db:5432/printbid?schema=public
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-3dmakermatch-jwt-secret-change-in-prod}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-3dmakermatch-refresh-secret-change-in-prod}
       - CLIENT_URL=https://app.3dmakermatch.dev.christofferson.family
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +66,7 @@ services:
 
 volumes:
   pgdata:
+  uploads:
 
 networks:
   proxy-net:
