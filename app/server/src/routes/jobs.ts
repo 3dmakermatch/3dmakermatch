@@ -6,8 +6,11 @@ import { fileProcessingQueue } from '../services/queue.js';
 const createJobSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
-  fileKey: z.string().min(1),
-  fileName: z.string().min(1),
+  files: z.array(z.object({
+    fileKey: z.string().min(1),
+    fileName: z.string().min(1),
+    displayOrder: z.number().int().min(0).default(0),
+  })).min(1, 'At least one file is required'),
   materialPreferred: z.union([z.string(), z.array(z.string())]).optional().transform(v =>
     typeof v === 'string' ? [v] : (v || [])
   ),
@@ -44,7 +47,7 @@ export async function jobRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
       }
 
-      const { title, description, fileKey, fileName, materialPreferred, quantity, expiresInDays } = body.data;
+      const { title, description, files, materialPreferred, quantity, expiresInDays } = body.data;
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -54,34 +57,39 @@ export async function jobRoutes(app: FastifyInstance) {
           userId: request.userId!,
           title,
           description,
-          fileUrl: fileKey,
           materialPreferred,
           quantity,
           status: 'draft',
           expiresAt,
           files: {
-            create: {
+            create: files.map(({ fileKey, fileName, displayOrder }) => ({
               fileUrl: fileKey,
               fileName,
-              displayOrder: 0,
-            },
+              displayOrder,
+            })),
           },
         },
         include: {
           user: { select: { id: true, fullName: true } },
-          files: { select: { id: true } },
+          files: {
+            select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
       });
 
-      const fileId = job.files[0]?.id;
-
-      // Queue file for processing
-      await fileProcessingQueue.add('process-file', {
-        jobId: job.id,
-        fileId: fileId ?? '',
-        fileKey,
-        fileName,
-      });
+      // Queue each file for processing
+      await Promise.all(
+        job.files.map((jobFile, idx) => {
+          const { fileKey, fileName } = files[idx];
+          return fileProcessingQueue.add('process-file', {
+            jobId: job.id,
+            fileId: jobFile.id,
+            fileKey,
+            fileName,
+          });
+        }),
+      );
 
       return reply.status(201).send(job);
     },
@@ -118,6 +126,10 @@ export async function jobRoutes(app: FastifyInstance) {
         include: {
           user: { select: { id: true, fullName: true } },
           _count: { select: { bids: true } },
+          files: {
+            select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -148,6 +160,9 @@ export async function jobRoutes(app: FastifyInstance) {
       include: {
         user: { select: { id: true, fullName: true } },
         _count: { select: { bids: true } },
+        files: {
+          orderBy: { displayOrder: 'asc' },
+        },
       },
     });
 
@@ -218,6 +233,10 @@ export async function jobRoutes(app: FastifyInstance) {
           where,
           include: {
             _count: { select: { bids: true } },
+            files: {
+              select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+              orderBy: { displayOrder: 'asc' },
+            },
           },
           skip: (page - 1) * limit,
           take: limit,
