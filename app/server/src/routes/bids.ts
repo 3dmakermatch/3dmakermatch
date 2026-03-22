@@ -158,6 +158,9 @@ export async function bidRoutes(app: FastifyInstance) {
       if (bid.job.userId !== request.userId) {
         return reply.status(403).send({ error: 'Only the job owner can reject bids', code: 403 });
       }
+      if (bid.status !== 'pending') {
+        return reply.status(400).send({ error: 'Can only reject pending bids', code: 400 });
+      }
 
       const updated = await app.prisma.bid.update({
         where: { id: bid.id },

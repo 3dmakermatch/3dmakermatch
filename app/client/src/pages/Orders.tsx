@@ -29,11 +29,12 @@ export default function Orders() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     api<{ data: OrderItem[] }>('/orders')
       .then((res) => setOrders(res.data))
-      .catch(() => {})
+      .catch(() => setLoadError('Failed to load orders'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -72,7 +73,9 @@ export default function Orders() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Orders</h1>
 
-      {orders.length === 0 ? (
+      {loadError ? (
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg">{loadError}</div>
+      ) : orders.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No orders yet.</div>
       ) : (
         <div className="space-y-4">
@@ -135,17 +138,17 @@ export default function Orders() {
                       Mark Shipped
                     </button>
                   )}
+                  {isPrinter && order.status === 'shipped' && (
+                    <button onClick={() => updateStatus(order.id, 'delivered')}
+                      className="bg-purple-600 text-white px-4 py-1.5 rounded text-sm hover:bg-purple-700">
+                      Mark Delivered
+                    </button>
+                  )}
                   {isBuyer && (order.status === 'shipped' || order.status === 'delivered') && (
                     <button onClick={() => confirmDelivery(order.id)}
                       className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">
                       Confirm Received
                     </button>
-                  )}
-                  {isBuyer && order.status === 'confirmed' && (
-                    <Link to={`/orders/${order.id}/review`}
-                      className="bg-brand-600 text-white px-4 py-1.5 rounded text-sm hover:bg-brand-700">
-                      Leave Review
-                    </Link>
                   )}
                 </div>
               </div>

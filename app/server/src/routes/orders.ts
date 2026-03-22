@@ -97,14 +97,20 @@ export async function orderRoutes(app: FastifyInstance) {
         });
       }
 
-      const updated = await app.prisma.order.update({
-        where: { id: order.id },
+      // Atomic conditional update to prevent race conditions
+      const result = await app.prisma.order.updateMany({
+        where: { id: order.id, status: order.status as any },
         data: {
           status: body.data.status,
           ...(body.data.trackingNumber && { trackingNumber: body.data.trackingNumber }),
         },
       });
 
+      if (result.count === 0) {
+        return reply.status(409).send({ error: 'Order status changed concurrently, please retry', code: 409 });
+      }
+
+      const updated = await app.prisma.order.findUnique({ where: { id: order.id } });
       return updated;
     },
   });

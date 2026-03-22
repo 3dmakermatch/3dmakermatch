@@ -37,7 +37,7 @@ export default function PrinterProfile() {
     if (!id) return;
     Promise.all([
       api<PrinterDetail>(`/printers/${id}`),
-      api<{ data: ReviewData[] }>(`/printers/${id}/reviews`).catch(() => ({ data: [] })),
+      api<{ data: ReviewData[] }>(`/printers/${id}/reviews`).catch(() => ({ data: [] as ReviewData[] })),
     ])
       .then(([printerData, reviewData]) => {
         setPrinter(printerData);

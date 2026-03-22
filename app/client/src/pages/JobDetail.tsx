@@ -128,7 +128,9 @@ export default function JobDetail() {
       });
       setMessages((prev) => [...prev, msg]);
       setNewMessage('');
-    } catch { /* ignore */ }
+    } catch {
+      alert('Failed to send message');
+    }
   };
 
   if (loading) {

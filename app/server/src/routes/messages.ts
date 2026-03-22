@@ -20,9 +20,26 @@ export async function messageRoutes(app: FastifyInstance) {
 
       const { jobId, receiverId, content } = body.data;
 
-      const job = await app.prisma.printJob.findUnique({ where: { id: jobId } });
+      const job = await app.prisma.printJob.findUnique({
+        where: { id: jobId },
+        include: { bids: { select: { printer: { select: { userId: true } } } } },
+      });
       if (!job) {
         return reply.status(404).send({ error: 'Job not found', code: 404 });
+      }
+
+      // Only the job owner and printers who have bid can message
+      const isJobOwner = job.userId === request.userId;
+      const isBidder = job.bids.some((b) => b.printer.userId === request.userId);
+      if (!isJobOwner && !isBidder) {
+        return reply.status(403).send({ error: 'Only the job owner and bidding printers can message', code: 403 });
+      }
+
+      // Verify receiver is also a participant
+      const receiverIsOwner = job.userId === receiverId;
+      const receiverIsBidder = job.bids.some((b) => b.printer.userId === receiverId);
+      if (!receiverIsOwner && !receiverIsBidder) {
+        return reply.status(400).send({ error: 'Receiver is not a participant in this job', code: 400 });
       }
 
       const message = await app.prisma.message.create({
