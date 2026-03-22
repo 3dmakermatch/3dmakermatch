@@ -83,6 +83,37 @@ export async function bidRoutes(app: FastifyInstance) {
         },
       });
 
+      // Anti-sniping: extend deadline if bid placed within 5 minutes of expiry
+      const timeUntilExpiry = job.expiresAt.getTime() - Date.now();
+      const fiveMinutes = 5 * 60 * 1000;
+      if (timeUntilExpiry > 0 && timeUntilExpiry < fiveMinutes && job.extensionCount < 3) {
+        const newExpiry = new Date(job.expiresAt.getTime() + fiveMinutes);
+        await app.prisma.printJob.update({
+          where: { id: job.id },
+          data: {
+            expiresAt: newExpiry,
+            extensionCount: job.extensionCount + 1,
+          },
+        });
+
+        // Notify all existing bidders + job owner about the extension
+        const existingBids = await app.prisma.bid.findMany({
+          where: { jobId: job.id },
+          include: { printer: { select: { userId: true } } },
+        });
+
+        for (const existingBid of existingBids) {
+          notifyUser(existingBid.printer.userId, {
+            type: 'job:extended',
+            data: { jobId: job.id, newExpiresAt: newExpiry.toISOString(), extensionCount: job.extensionCount + 1 },
+          });
+        }
+        notifyUser(job.userId, {
+          type: 'job:extended',
+          data: { jobId: job.id, newExpiresAt: newExpiry.toISOString(), extensionCount: job.extensionCount + 1 },
+        });
+      }
+
       const jobOwner = await app.prisma.user.findUnique({
         where: { id: job.userId },
         select: { id: true, email: true, emailPreferences: true },
