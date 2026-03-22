@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { createConnectAccount } from '../services/stripe.js';
+import { geocodeAddress } from '../services/geocoding.js';
 
 const createPrinterSchema = z.object({
   bio: z.string().max(2000).optional(),
@@ -29,6 +30,9 @@ const listPrintersSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   verified: z.coerce.boolean().optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).optional(),
 });
 
 export async function printerRoutes(app: FastifyInstance) {
@@ -72,7 +76,29 @@ export async function printerRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: query.error.issues[0].message, code: 400 });
     }
 
-    const { page, limit, city, state, verified } = query.data;
+    const { page, limit, city, state, verified, lat, lng, radius } = query.data;
+
+    // Proximity search using PostGIS
+    if (lat !== undefined && lng !== undefined && radius !== undefined) {
+      const radiusMeters = radius * 1609.34;
+      const printers = await app.prisma.$queryRaw`
+        SELECT p.*, u.full_name, u.id as user_id
+        FROM printers p
+        JOIN users u ON p.user_id = u.id
+        WHERE ST_DWithin(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography,
+          ${radiusMeters}
+        )
+        AND p.latitude IS NOT NULL
+        ORDER BY ST_Distance(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography
+        )
+      `;
+      return { data: printers };
+    }
+
     const where: Record<string, unknown> = {};
     if (city) where.addressCity = { contains: city, mode: 'insensitive' };
     if (state) where.addressState = { contains: state, mode: 'insensitive' };
@@ -283,12 +309,25 @@ export async function printerRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
       }
 
+      const updateData: Record<string, unknown> = {
+        ...body.data,
+        capabilities: body.data.capabilities ?? undefined,
+      };
+
+      // Auto-geocode when city or state is provided
+      const newCity = body.data.addressCity ?? printer.addressCity;
+      const newState = body.data.addressState ?? printer.addressState;
+      if ((body.data.addressCity || body.data.addressState) && newCity && newState) {
+        const coords = await geocodeAddress(newCity, newState);
+        if (coords) {
+          updateData.latitude = coords.lat;
+          updateData.longitude = coords.lng;
+        }
+      }
+
       const updated = await app.prisma.printer.update({
         where: { id: request.params.id },
-        data: {
-          ...body.data,
-          capabilities: body.data.capabilities ?? undefined,
-        },
+        data: updateData as Parameters<typeof app.prisma.printer.update>[0]['data'],
         include: { user: { select: { id: true, fullName: true } } },
       });
 

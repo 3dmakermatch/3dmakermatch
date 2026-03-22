@@ -26,6 +26,9 @@ const listJobsSchema = z.object({
   city: z.string().optional(),
   sort_by: z.enum(['created_at', 'expires_at']).default('created_at'),
   order: z.enum(['asc', 'desc']).default('desc'),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).optional(),
 });
 
 const updateJobSchema = z.object({
@@ -102,7 +105,7 @@ export async function jobRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: query.error.issues[0].message, code: 400 });
     }
 
-    const { page, limit, status, material, city, sort_by, order } = query.data;
+    const { page, limit, status, material, city, sort_by, order, lat, lng, radius } = query.data;
 
     const where: Record<string, unknown> = {};
     if (status) {
@@ -116,6 +119,21 @@ export async function jobRoutes(app: FastifyInstance) {
     }
     if (city) {
       where.user = { printer: { addressCity: { contains: city, mode: 'insensitive' } } };
+    }
+    // Proximity filter: limit to jobs posted by users whose printer is within radius
+    if (lat !== undefined && lng !== undefined && radius !== undefined) {
+      const radiusMeters = radius * 1609.34;
+      const nearbyPrinters = await app.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT p.id FROM printers p
+        WHERE ST_DWithin(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography,
+          ${radiusMeters}
+        )
+        AND p.latitude IS NOT NULL
+      `;
+      const nearbyUserIds = nearbyPrinters.map((p) => p.id);
+      where.user = { printer: { id: { in: nearbyUserIds } } };
     }
     // Only show non-expired jobs
     where.expiresAt = { gt: new Date() };
