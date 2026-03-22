@@ -22,6 +22,9 @@ export default function Layout() {
 
             {user ? (
               <>
+                <Link to="/orders" className="text-sm text-gray-600 hover:text-gray-900">
+                  Orders
+                </Link>
                 <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
                   Dashboard
                 </Link>

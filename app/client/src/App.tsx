@@ -10,6 +10,8 @@ import PrinterList from './pages/PrinterList';
 import JobList from './pages/JobList';
 import JobDetail from './pages/JobDetail';
 import CreateJob from './pages/CreateJob';
+import Orders from './pages/Orders';
+import ReviewForm from './pages/ReviewForm';
 
 export default function App() {
   return (
@@ -22,22 +24,10 @@ export default function App() {
         <Route path="/printers/:id" element={<PrinterProfile />} />
         <Route path="/jobs" element={<JobList />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
-        <Route
-          path="/jobs/new"
-          element={
-            <ProtectedRoute>
-              <CreateJob />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/jobs/new" element={<ProtectedRoute><CreateJob /></ProtectedRoute>} />
+        <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+        <Route path="/orders/:orderId/review" element={<ProtectedRoute><ReviewForm /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       </Route>
     </Routes>
   );
