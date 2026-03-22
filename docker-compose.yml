@@ -16,6 +16,13 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-3dmakermatch-refresh-secret-change-in-prod}
       - CLIENT_URL=https://app.3dmakermatch.dev.christofferson.family
       - UPLOAD_DIR=/app/uploads
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-noreply@3dmakermatch.dev}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SERVER_URL=${SERVER_URL:-https://app.3dmakermatch.dev.christofferson.family}
     volumes:
       - uploads:/app/uploads
     depends_on:
