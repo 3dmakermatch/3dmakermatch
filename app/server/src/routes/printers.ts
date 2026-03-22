@@ -107,6 +107,7 @@ export async function printerRoutes(app: FastifyInstance) {
       include: {
         user: { select: { id: true, fullName: true, createdAt: true } },
         benchmarks: true,
+        machines: true,
       },
     });
     if (!printer) {
@@ -132,6 +133,134 @@ export async function printerRoutes(app: FastifyInstance) {
         data: { stripeAccountId: accountId },
       });
       return { onboardingUrl };
+    },
+  });
+
+  // List machines for a printer (public)
+  app.get<{ Params: { id: string } }>('/:id/machines', async (request, reply) => {
+    const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+    if (!printer) {
+      return reply.status(404).send({ error: 'Printer not found', code: 404 });
+    }
+    const machines = await app.prisma.printerMachine.findMany({
+      where: { printerId: request.params.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    return machines;
+  });
+
+  const createMachineSchema = z.object({
+    name: z.string().min(1).max(100),
+    type: z.string().min(1).max(50),
+    materials: z.array(z.string()).default([]),
+    buildVolume: z.object({
+      x: z.number().positive(),
+      y: z.number().positive(),
+      z: z.number().positive(),
+    }),
+  });
+
+  const updateMachineSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    type: z.string().min(1).max(50).optional(),
+    materials: z.array(z.string()).optional(),
+    buildVolume: z.object({
+      x: z.number().positive(),
+      y: z.number().positive(),
+      z: z.number().positive(),
+    }).optional(),
+  });
+
+  // Create a machine for a printer
+  app.post<{ Params: { id: string } }>('/:id/machines', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const body = createMachineSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
+      }
+
+      const machine = await app.prisma.printerMachine.create({
+        data: {
+          printerId: request.params.id,
+          name: body.data.name,
+          type: body.data.type,
+          materials: body.data.materials,
+          buildVolume: body.data.buildVolume,
+        },
+      });
+
+      return reply.status(201).send(machine);
+    },
+  });
+
+  // Update a machine
+  app.put<{ Params: { id: string; machineId: string } }>('/:id/machines/:machineId', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const machine = await app.prisma.printerMachine.findUnique({
+        where: { id: request.params.machineId },
+      });
+      if (!machine || machine.printerId !== request.params.id) {
+        return reply.status(404).send({ error: 'Machine not found', code: 404 });
+      }
+
+      const body = updateMachineSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
+      }
+
+      const updated = await app.prisma.printerMachine.update({
+        where: { id: request.params.machineId },
+        data: {
+          ...(body.data.name !== undefined && { name: body.data.name }),
+          ...(body.data.type !== undefined && { type: body.data.type }),
+          ...(body.data.materials !== undefined && { materials: body.data.materials }),
+          ...(body.data.buildVolume !== undefined && { buildVolume: body.data.buildVolume }),
+        },
+      });
+
+      return updated;
+    },
+  });
+
+  // Delete a machine
+  app.delete<{ Params: { id: string; machineId: string } }>('/:id/machines/:machineId', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const machine = await app.prisma.printerMachine.findUnique({
+        where: { id: request.params.machineId },
+      });
+      if (!machine || machine.printerId !== request.params.id) {
+        return reply.status(404).send({ error: 'Machine not found', code: 404 });
+      }
+
+      await app.prisma.printerMachine.delete({ where: { id: request.params.machineId } });
+      return reply.status(204).send();
     },
   });
 
