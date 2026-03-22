@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     mem_limit: 1g
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-development}
       - PORT=3000
       - DATABASE_URL=postgresql://printbid:printbid@db:5432/printbid?schema=public
       - REDIS_URL=redis://redis:6379
