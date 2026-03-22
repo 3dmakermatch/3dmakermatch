@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const USE_LOCAL_STORAGE = !IS_PRODUCTION;
+const USE_LOCAL_STORAGE = process.env.STORAGE_MODE !== 's3';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_EXTENSIONS = ['.stl', '.3mf', '.obj'];
