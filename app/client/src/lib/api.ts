@@ -30,7 +30,7 @@ export async function api<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers as Record<string, string>),
   };
 
