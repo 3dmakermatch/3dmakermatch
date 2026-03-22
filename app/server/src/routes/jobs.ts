@@ -59,15 +59,26 @@ export async function jobRoutes(app: FastifyInstance) {
           quantity,
           status: 'draft',
           expiresAt,
+          files: {
+            create: {
+              fileUrl: fileKey,
+              fileName,
+              displayOrder: 0,
+            },
+          },
         },
         include: {
           user: { select: { id: true, fullName: true } },
+          files: { select: { id: true } },
         },
       });
+
+      const fileId = job.files[0]?.id;
 
       // Queue file for processing
       await fileProcessingQueue.add('process-file', {
         jobId: job.id,
+        fileId: fileId ?? '',
         fileKey,
         fileName,
       });

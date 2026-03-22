@@ -65,7 +65,7 @@ export async function notificationPrefRoutes(app: FastifyInstance) {
 
     await app.prisma.user.update({
       where: { id: user.id },
-      data: { emailPreferences: prefs },
+      data: { emailPreferences: prefs as never },
     });
     return { unsubscribed: true, category: result.category };
   });
