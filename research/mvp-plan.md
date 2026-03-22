@@ -118,6 +118,7 @@ The absolute minimum to prove the marketplace works:
 ### What's Deferred to Phase 2
 - Real-time bid notifications (WebSocket/uWebSockets.js)
 - 3D file preview in browser (Three.js / react-three-fiber)
+- Client-side STL repair & simplification — scan incoming files before upload, auto-repair mesh errors (manifold-3d WASM), and decimate STLs with >1M triangles to reduce file size. If the simplified file is under 50MB, substitute it transparently; otherwise show an error that the file is too large even after optimization. Offer the user a choice to accept the repaired/simplified version.
 - Trust Index algorithm (use simple avg rating for now)
 - Geographic search/filtering with map (use city-based filtering for now)
 - Admin moderation tools
