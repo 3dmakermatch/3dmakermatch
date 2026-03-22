@@ -7,6 +7,12 @@ import {
   verifyRefreshToken,
   authenticate,
 } from '../middleware/auth.js';
+import {
+  isGoogleOAuthConfigured,
+  getGoogleAuthUrl,
+  exchangeCodeForTokens,
+  getGoogleUserInfo,
+} from '../services/oauth.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(255),
@@ -76,6 +82,13 @@ export async function authRoutes(app: FastifyInstance) {
       const user = await app.prisma.user.findUnique({ where: { email } });
       if (!user) {
         return reply.status(401).send({ error: 'Invalid credentials', code: 401 });
+      }
+
+      if (!user.passwordHash) {
+        return reply.status(401).send({
+          error: 'This account uses Google sign-in. Please use the Google button.',
+          code: 401,
+        });
       }
 
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -162,6 +175,91 @@ export async function authRoutes(app: FastifyInstance) {
       reply.clearCookie('refreshToken', { path: '/api/v1/auth' });
       return { message: 'Logged out' };
     },
+  });
+
+  // Google OAuth status
+  app.get('/google/status', async (_request, reply) => {
+    return reply.send({ configured: isGoogleOAuthConfigured() });
+  });
+
+  // Redirect to Google consent screen
+  app.get('/google', async (_request, reply) => {
+    if (!isGoogleOAuthConfigured()) {
+      return reply.status(503).send({ error: 'Google OAuth is not configured', code: 503 });
+    }
+    const port = process.env.PORT || 3000;
+    const serverUrl = process.env.SERVER_URL || `http://localhost:${port}`;
+    const redirectUri = `${serverUrl}/api/v1/auth/google/callback`;
+    const authUrl = getGoogleAuthUrl(redirectUri);
+    return reply.redirect(authUrl);
+  });
+
+  // Google OAuth callback
+  app.get('/google/callback', async (request, reply) => {
+    if (!isGoogleOAuthConfigured()) {
+      return reply.status(503).send({ error: 'Google OAuth is not configured', code: 503 });
+    }
+
+    const { code } = request.query as { code?: string };
+    if (!code) {
+      return reply.status(400).send({ error: 'Missing authorization code', code: 400 });
+    }
+
+    try {
+      const port = process.env.PORT || 3000;
+      const serverUrl = process.env.SERVER_URL || `http://localhost:${port}`;
+      const redirectUri = `${serverUrl}/api/v1/auth/google/callback`;
+
+      const tokens = await exchangeCodeForTokens(code, redirectUri);
+      const googleUser = await getGoogleUserInfo(tokens.access_token);
+
+      let user = await app.prisma.user.findUnique({ where: { googleId: googleUser.sub } });
+
+      if (!user) {
+        user = await app.prisma.user.findUnique({ where: { email: googleUser.email } });
+        if (user) {
+          // Link existing email account to Google
+          user = await app.prisma.user.update({
+            where: { id: user.id },
+            data: { googleId: googleUser.sub },
+          });
+        } else {
+          // Create new buyer account
+          user = await app.prisma.user.create({
+            data: {
+              email: googleUser.email,
+              fullName: googleUser.name,
+              role: 'buyer',
+              googleId: googleUser.sub,
+              passwordHash: null,
+            },
+          });
+        }
+      }
+
+      const accessToken = generateAccessToken({ userId: user.id, role: user.role });
+      const refreshToken = generateRefreshToken({ userId: user.id, role: user.role });
+
+      await app.prisma.user.update({
+        where: { id: user.id },
+        data: { refreshToken },
+      });
+
+      reply.setCookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/api/v1/auth',
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      return reply.redirect(`${clientUrl}/auth/callback?token=${accessToken}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'OAuth failed';
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      return reply.redirect(`${clientUrl}/login?error=${encodeURIComponent(message)}`);
+    }
   });
 
   // Get current user (useful for checking auth state)
