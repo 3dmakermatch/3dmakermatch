@@ -13,6 +13,8 @@ import CreateJob from './pages/CreateJob';
 import Orders from './pages/Orders';
 import ReviewForm from './pages/ReviewForm';
 import AuthCallback from './pages/AuthCallback';
+import NotificationSettings from './pages/NotificationSettings';
+import UnsubscribeConfirm from './pages/UnsubscribeConfirm';
 
 export default function App() {
   return (
@@ -30,6 +32,8 @@ export default function App() {
         <Route path="/orders/:orderId/review" element={<ProtectedRoute><ReviewForm /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
+        <Route path="/unsubscribe" element={<UnsubscribeConfirm />} />
       </Route>
     </Routes>
   );

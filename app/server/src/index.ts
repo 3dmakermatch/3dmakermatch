@@ -14,6 +14,7 @@ import { messageRoutes } from './routes/messages.js';
 import { orderRoutes } from './routes/orders.js';
 import { reviewRoutes } from './routes/reviews.js';
 import { paymentWebhookRoutes } from './routes/payments.js';
+import { notificationPrefRoutes } from './routes/notification-prefs.js';
 import { startFileProcessingWorker } from './services/queue.js';
 
 const prisma = new PrismaClient();
@@ -81,6 +82,7 @@ async function start() {
   await app.register(orderRoutes, { prefix: '/api/v1/orders' });
   await app.register(reviewRoutes, { prefix: '/api/v1' });
   await app.register(paymentWebhookRoutes, { prefix: '/api/v1/payments' });
+  await app.register(notificationPrefRoutes, { prefix: '/api/v1' });
 
   // Start file processing worker
   const worker = startFileProcessingWorker(prisma);
