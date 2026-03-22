@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -7,8 +7,6 @@ interface JobDetailData {
   id: string;
   title: string;
   description: string | null;
-  fileUrl: string;
-  thumbnailUrl: string | null;
   materialPreferred: string | null;
   quantity: number;
   status: string;
@@ -17,13 +15,32 @@ interface JobDetailData {
   bidCount: number;
   fileMetadata: {
     fileName?: string;
-    dimensions?: { x: number; y: number; z: number };
-    volumeCm3?: number;
-    polygonCount?: number;
-    isManifold?: boolean;
     printabilityScore?: number;
   } | null;
   user: { id: string; fullName: string };
+}
+
+interface BidData {
+  id: string;
+  amountCents: number;
+  shippingCostCents: number;
+  estimatedDays: number;
+  message: string | null;
+  status: string;
+  createdAt: string;
+  printer: {
+    id: string;
+    averageRating: number;
+    isVerified: boolean;
+    user: { id: string; fullName: string };
+  };
+}
+
+interface MessageData {
+  id: string;
+  content: string;
+  createdAt: string;
+  sender: { id: string; fullName: string };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,153 +55,191 @@ export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [job, setJob] = useState<JobDetailData | null>(null);
+  const [bids, setBids] = useState<BidData[]>([]);
+  const [messages, setMessages] = useState<MessageData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [bidAmount, setBidAmount] = useState('');
+  const [bidShipping, setBidShipping] = useState('0');
+  const [bidDays, setBidDays] = useState('');
+  const [bidMessage, setBidMessage] = useState('');
+  const [bidSubmitting, setBidSubmitting] = useState(false);
+  const [bidError, setBidError] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+
   useEffect(() => {
     if (!id) return;
-    api<JobDetailData>(`/jobs/${id}`)
-      .then(setJob)
+    Promise.all([
+      api<JobDetailData>(`/jobs/${id}`),
+      api<{ data: BidData[] }>(`/jobs/${id}/bids`).catch(() => ({ data: [] })),
+      user ? api<{ data: MessageData[] }>(`/messages/threads/${id}`).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+    ])
+      .then(([jobData, bidData, msgData]) => {
+        setJob(jobData);
+        setBids(bidData.data);
+        setMessages(msgData.data);
+      })
       .catch(() => setError('Job not found'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, user]);
+
+  const handleBidSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBidError('');
+    setBidSubmitting(true);
+    try {
+      const bid = await api<BidData>(`/jobs/${id}/bids`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amountCents: Math.round(Number(bidAmount) * 100),
+          shippingCostCents: Math.round(Number(bidShipping) * 100),
+          estimatedDays: Number(bidDays),
+          message: bidMessage || undefined,
+        }),
+      });
+      setBids((prev) => [...prev, bid].sort((a, b) => a.amountCents - b.amountCents));
+      setBidAmount('');
+      setBidShipping('0');
+      setBidDays('');
+      setBidMessage('');
+    } catch (err: unknown) {
+      setBidError((err as { error?: string }).error || 'Failed to submit bid');
+    } finally {
+      setBidSubmitting(false);
+    }
+  };
+
+  const handleAcceptBid = async (bidId: string) => {
+    try {
+      await api(`/bids/${bidId}/accept`, { method: 'POST' });
+      window.location.reload();
+    } catch (err: unknown) {
+      alert((err as { error?: string }).error || 'Failed to accept bid');
+    }
+  };
+
+  const handleSendMessage = async (receiverId: string) => {
+    if (!newMessage.trim()) return;
+    try {
+      const msg = await api<MessageData>('/messages', {
+        method: 'POST',
+        body: JSON.stringify({ jobId: id, receiverId, content: newMessage }),
+      });
+      setMessages((prev) => [...prev, msg]);
+      setNewMessage('');
+    } catch { /* ignore */ }
+  };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>;
   }
-
   if (error || !job) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-500">
-        {error || 'Job not found'}
-      </div>
-    );
+    return <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-500">{error || 'Job not found'}</div>;
   }
 
   const isOwner = user?.id === job.user.id;
+  const isPrinter = user?.role === 'printer';
   const isExpired = new Date(job.expiresAt) < new Date();
+  const alreadyBid = bids.some((b) => b.printer.user.id === user?.id);
   const meta = job.fileMetadata;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6 border-b">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-2xl font-bold">{job.title}</h1>
-                <span className={`text-xs px-2 py-1 rounded-full capitalize ${STATUS_COLORS[job.status] || 'bg-gray-100'}`}>
-                  {job.status}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500">
-                Posted by {job.user.fullName} &middot;{' '}
-                {new Date(job.createdAt).toLocaleDateString()}
-              </p>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-2xl font-bold">{job.title}</h1>
+              <span className={`text-xs px-2 py-1 rounded-full capitalize ${STATUS_COLORS[job.status] || 'bg-gray-100'}`}>{job.status}</span>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-brand-600">{job.bidCount}</div>
-              <div className="text-sm text-gray-500">bids</div>
-            </div>
+            <p className="text-sm text-gray-500">Posted by {job.user.fullName} &middot; {new Date(job.createdAt).toLocaleDateString()}</p>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold text-brand-600">{bids.length}</div>
+            <div className="text-sm text-gray-500">bids</div>
           </div>
         </div>
-
-        <div className="p-6 grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-4">
-            {job.description && (
-              <div>
-                <h2 className="font-semibold text-gray-700 mb-2">Description</h2>
-                <p className="text-gray-600 whitespace-pre-wrap">{job.description}</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500">Material</div>
-                <div className="font-medium">{job.materialPreferred || 'Any'}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500">Quantity</div>
-                <div className="font-medium">{job.quantity}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500">Expires</div>
-                <div className="font-medium">
-                  {isExpired ? (
-                    <span className="text-red-600">Expired</span>
-                  ) : (
-                    new Date(job.expiresAt).toLocaleDateString()
-                  )}
-                </div>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500">Status</div>
-                <div className="font-medium capitalize">{job.status}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold text-gray-700 mb-3">File Info</h3>
-              {meta ? (
-                <div className="space-y-2 text-sm">
-                  {meta.fileName && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">File</span>
-                      <span className="font-medium truncate ml-2">{meta.fileName}</span>
-                    </div>
-                  )}
-                  {meta.dimensions && meta.dimensions.x > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Size (mm)</span>
-                      <span className="font-medium">
-                        {meta.dimensions.x.toFixed(1)} x {meta.dimensions.y.toFixed(1)} x {meta.dimensions.z.toFixed(1)}
-                      </span>
-                    </div>
-                  )}
-                  {meta.volumeCm3 !== undefined && meta.volumeCm3 > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Volume</span>
-                      <span className="font-medium">{meta.volumeCm3.toFixed(1)} cm³</span>
-                    </div>
-                  )}
-                  {meta.printabilityScore !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Printability</span>
-                      <span className={`font-medium ${meta.printabilityScore >= 80 ? 'text-green-600' : meta.printabilityScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {meta.printabilityScore}/100
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">Processing file...</p>
-              )}
-            </div>
-
-            {job.status === 'bidding' && !isOwner && !isExpired && user?.role === 'printer' && (
-              <div className="bg-brand-50 rounded-lg p-4 text-center">
-                <p className="text-sm text-brand-700 mb-2">Want to print this?</p>
-                <p className="text-xs text-gray-500">Bidding will be available in Sprint 3</p>
-              </div>
-            )}
-
-            {isOwner && (
-              <Link
-                to="/dashboard"
-                className="block text-center text-sm text-brand-600 hover:text-brand-700"
-              >
-                Manage in Dashboard
-              </Link>
-            )}
-          </div>
+        {job.description && <p className="text-gray-600 mt-4 whitespace-pre-wrap">{job.description}</p>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs text-gray-500">Material</div><div className="font-medium">{job.materialPreferred || 'Any'}</div></div>
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs text-gray-500">Quantity</div><div className="font-medium">{job.quantity}</div></div>
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs text-gray-500">Expires</div><div className="font-medium">{isExpired ? <span className="text-red-600">Expired</span> : new Date(job.expiresAt).toLocaleDateString()}</div></div>
+          {meta?.printabilityScore !== undefined && (
+            <div className="bg-gray-50 rounded p-3"><div className="text-xs text-gray-500">Printability</div><div className={`font-medium ${meta.printabilityScore >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>{meta.printabilityScore}/100</div></div>
+          )}
         </div>
       </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4">Bids</h2>
+        {bids.length === 0 ? <p className="text-gray-500">No bids yet.</p> : (
+          <div className="space-y-3">
+            {bids.map((bid) => (
+              <div key={bid.id} className="border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Link to={`/printers/${bid.printer.id}`} className="font-medium text-brand-600 hover:text-brand-700">{bid.printer.user.fullName}</Link>
+                    {bid.printer.isVerified && <span className="ml-1 text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full">Verified</span>}
+                    <span className="ml-2 text-sm text-gray-500">{bid.printer.averageRating > 0 ? `${bid.printer.averageRating.toFixed(1)}/5` : 'New'}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold">${(bid.amountCents / 100).toFixed(2)}</div>
+                    {bid.shippingCostCents > 0 && <div className="text-xs text-gray-500">+${(bid.shippingCostCents / 100).toFixed(2)} shipping</div>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                  <span>{bid.estimatedDays} day{bid.estimatedDays !== 1 ? 's' : ''}</span>
+                  <span className={`capitalize ${bid.status === 'accepted' ? 'text-green-600 font-medium' : bid.status === 'rejected' ? 'text-red-500' : ''}`}>{bid.status}</span>
+                </div>
+                {bid.message && <p className="text-sm text-gray-600 mt-2">{bid.message}</p>}
+                {isOwner && bid.status === 'pending' && (
+                  <button onClick={() => handleAcceptBid(bid.id)} className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">Accept Bid</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isPrinter && job.status === 'bidding' && !isExpired && !alreadyBid && !isOwner && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Place Your Bid</h2>
+          {bidError && <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4 text-sm">{bidError}</div>}
+          <form onSubmit={handleBidSubmit} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label><input type="number" step="0.01" min="1" required value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Shipping ($)</label><input type="number" step="0.01" min="0" value={bidShipping} onChange={(e) => setBidShipping(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Est. Days</label><input type="number" min="1" max="90" required value={bidDays} onChange={(e) => setBidDays(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label><textarea rows={2} maxLength={2000} value={bidMessage} onChange={(e) => setBidMessage(e.target.value)} placeholder="DfAM advice, material suggestions, etc." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+            <button type="submit" disabled={bidSubmitting} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50">{bidSubmitting ? 'Submitting...' : 'Submit Bid'}</button>
+          </form>
+        </div>
+      )}
+
+      {user && (isOwner || alreadyBid) && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Messages</h2>
+          {messages.length === 0 ? <p className="text-gray-500 text-sm">No messages yet.</p> : (
+            <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
+              {messages.map((msg) => (
+                <div key={msg.id} className={`p-3 rounded-lg ${msg.sender.id === user.id ? 'bg-brand-50 ml-8' : 'bg-gray-50 mr-8'}`}>
+                  <div className="flex justify-between text-xs text-gray-500 mb-1"><span className="font-medium">{msg.sender.fullName}</span><span>{new Date(msg.createdAt).toLocaleString()}</span></div>
+                  <p className="text-sm">{msg.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..."
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const rid = isOwner ? bids[0]?.printer.user.id : job.user.id; if (rid) handleSendMessage(rid); } }} />
+            <button onClick={() => { const rid = isOwner ? bids[0]?.printer.user.id : job.user.id; if (rid) handleSendMessage(rid); }}
+              className="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700">Send</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

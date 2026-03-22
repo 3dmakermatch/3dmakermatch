@@ -8,6 +8,10 @@ import { userRoutes } from './routes/users.js';
 import { printerRoutes } from './routes/printers.js';
 import { uploadRoutes } from './routes/uploads.js';
 import { jobRoutes } from './routes/jobs.js';
+import { bidRoutes } from './routes/bids.js';
+import { messageRoutes } from './routes/messages.js';
+import { orderRoutes } from './routes/orders.js';
+import { reviewRoutes } from './routes/reviews.js';
 import { startFileProcessingWorker } from './services/queue.js';
 
 const prisma = new PrismaClient();
@@ -64,6 +68,10 @@ async function start() {
   await app.register(printerRoutes, { prefix: '/api/v1/printers' });
   await app.register(uploadRoutes, { prefix: '/api/v1/uploads' });
   await app.register(jobRoutes, { prefix: '/api/v1/jobs' });
+  await app.register(bidRoutes, { prefix: '/api/v1' });
+  await app.register(messageRoutes, { prefix: '/api/v1/messages' });
+  await app.register(orderRoutes, { prefix: '/api/v1/orders' });
+  await app.register(reviewRoutes, { prefix: '/api/v1' });
 
   // Start file processing worker
   const worker = startFileProcessingWorker(prisma);

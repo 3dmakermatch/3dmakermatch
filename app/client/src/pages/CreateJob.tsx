@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, getAccessToken } from '../lib/api';
 
 const MATERIALS = ['PLA', 'PETG', 'ABS', 'TPU', 'Nylon', 'Resin', 'ASA', 'PC', 'Other'];
 
@@ -54,7 +54,7 @@ export default function CreateJob() {
           body: file,
           headers: {
             'Content-Type': 'application/octet-stream',
-            'Authorization': `Bearer ${(await import('../lib/api')).getAccessToken()}`,
+            'Authorization': `Bearer ${getAccessToken()}`,
           },
         });
         if (!uploadRes.ok) {
