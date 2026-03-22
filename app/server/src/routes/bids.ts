@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { createPaymentIntent, isMockStripe } from '../services/stripe.js';
+import { sendEmail } from '../services/email.js';
+import { newBidEmail, bidAcceptedEmail, bidRejectedEmail } from '../services/email-templates.js';
+import { notifyUser } from '../services/websocket.js';
 
 const createBidSchema = z.object({
   amountCents: z.number().int().min(100).max(10_000_00),
@@ -66,6 +69,16 @@ export async function bidRoutes(app: FastifyInstance) {
           },
         },
       });
+
+      const jobOwner = await app.prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { id: true, email: true, emailPreferences: true },
+      });
+      if (jobOwner) {
+        const tpl = newBidEmail(job.title, bid.amountCents / 100, bid.printer.user.fullName);
+        sendEmail({ to: jobOwner.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: jobOwner.id, userPrefs: jobOwner.emailPreferences as any }).catch(() => {});
+        notifyUser(jobOwner.id, { type: 'bid:new', data: { jobId: job.id, bidId: bid.id } });
+      }
 
       return reply.status(201).send(bid);
     },
@@ -141,6 +154,16 @@ export async function bidRoutes(app: FastifyInstance) {
         return [accepted, newOrder];
       });
 
+      const printerUser = await app.prisma.printer.findUnique({
+        where: { id: bid.printerId },
+        include: { user: { select: { id: true, email: true, emailPreferences: true } } },
+      });
+      if (printerUser) {
+        const tpl = bidAcceptedEmail(bid.job.title);
+        sendEmail({ to: printerUser.user.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: printerUser.user.id, userPrefs: printerUser.user.emailPreferences as any }).catch(() => {});
+        notifyUser(printerUser.user.id, { type: 'bid:accepted', data: { bidId: bid.id, jobId: bid.jobId } });
+      }
+
       return { bid: updatedBid, order };
     },
   });
@@ -167,6 +190,16 @@ export async function bidRoutes(app: FastifyInstance) {
         where: { id: bid.id },
         data: { status: 'rejected' },
       });
+
+      const printerUser = await app.prisma.printer.findUnique({
+        where: { id: bid.printerId },
+        include: { user: { select: { id: true, email: true, emailPreferences: true } } },
+      });
+      if (printerUser) {
+        const tpl = bidRejectedEmail(bid.job.title);
+        sendEmail({ to: printerUser.user.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: printerUser.user.id, userPrefs: printerUser.user.emailPreferences as any }).catch(() => {});
+        notifyUser(printerUser.user.id, { type: 'bid:rejected', data: { bidId: bid.id, jobId: bid.jobId } });
+      }
 
       return updated;
     },

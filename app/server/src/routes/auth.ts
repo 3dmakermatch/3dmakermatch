@@ -13,6 +13,8 @@ import {
   exchangeCodeForTokens,
   getGoogleUserInfo,
 } from '../services/oauth.js';
+import { sendEmail } from '../services/email.js';
+import { welcomeEmail } from '../services/email-templates.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(255),
@@ -64,6 +66,9 @@ export async function authRoutes(app: FastifyInstance) {
         path: '/api/v1/auth',
         maxAge: 7 * 24 * 60 * 60,
       });
+
+      const tpl = welcomeEmail(user.fullName);
+      sendEmail({ to: user.email, subject: tpl.subject, html: tpl.html, category: 'marketing', userId: user.id, userPrefs: {} }).catch(() => {});
 
       return reply.status(201).send({ user, accessToken });
     },

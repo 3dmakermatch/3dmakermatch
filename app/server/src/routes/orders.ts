@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { createRefund } from '../services/stripe.js';
+import { sendEmail } from '../services/email.js';
+import { orderStatusEmail } from '../services/email-templates.js';
+import { notifyUser } from '../services/websocket.js';
 
 const updateOrderSchema = z.object({
   status: z.enum(['printing', 'shipped', 'delivered']),
@@ -111,7 +114,21 @@ export async function orderRoutes(app: FastifyInstance) {
         return reply.status(409).send({ error: 'Order status changed concurrently, please retry', code: 409 });
       }
 
-      const updated = await app.prisma.order.findUnique({ where: { id: order.id } });
+      const updated = await app.prisma.order.findUnique({
+        where: { id: order.id },
+        include: { job: { select: { title: true } } },
+      });
+
+      const buyer = await app.prisma.user.findUnique({
+        where: { id: order.buyerId },
+        select: { id: true, email: true, emailPreferences: true },
+      });
+      if (buyer && updated) {
+        const tpl = orderStatusEmail(updated.job.title, body.data.status, body.data.trackingNumber);
+        sendEmail({ to: buyer.email, subject: tpl.subject, html: tpl.html, category: 'orders', userId: buyer.id, userPrefs: buyer.emailPreferences as any }).catch(() => {});
+        notifyUser(buyer.id, { type: 'order:status', data: { orderId: order.id, status: body.data.status } });
+      }
+
       return updated;
     },
   });
@@ -154,6 +171,7 @@ export async function orderRoutes(app: FastifyInstance) {
         const confirmed = await tx.order.update({
           where: { id: order.id },
           data: { status: 'confirmed' },
+          include: { job: { select: { title: true } } },
         });
 
         await tx.printJob.update({
@@ -165,6 +183,16 @@ export async function orderRoutes(app: FastifyInstance) {
 
         return confirmed;
       });
+
+      const printerRecord = await app.prisma.printer.findUnique({
+        where: { id: order.printerId },
+        include: { user: { select: { id: true, email: true, emailPreferences: true } } },
+      });
+      if (printerRecord) {
+        const tpl = orderStatusEmail(updated.job.title, 'confirmed');
+        sendEmail({ to: printerRecord.user.email, subject: tpl.subject, html: tpl.html, category: 'orders', userId: printerRecord.user.id, userPrefs: printerRecord.user.emailPreferences as any }).catch(() => {});
+        notifyUser(printerRecord.user.id, { type: 'order:status', data: { orderId: order.id, status: 'confirmed' } });
+      }
 
       return updated;
     },
