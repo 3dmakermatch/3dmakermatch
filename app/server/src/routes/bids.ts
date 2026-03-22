@@ -6,11 +6,24 @@ import { sendEmail } from '../services/email.js';
 import { newBidEmail, bidAcceptedEmail, bidRejectedEmail } from '../services/email-templates.js';
 import { notifyUser } from '../services/websocket.js';
 
+const buildPlanSchema = z.object({
+  plates: z.array(z.object({
+    machineId: z.string(),
+    machineName: z.string(),
+    parts: z.array(z.object({
+      fileId: z.string(),
+      position: z.tuple([z.number(), z.number(), z.number()]),
+      rotation: z.tuple([z.number(), z.number(), z.number()]),
+    })),
+  })),
+}).optional();
+
 const createBidSchema = z.object({
   amountCents: z.number().int().min(100).max(10_000_00),
   shippingCostCents: z.number().int().min(0).max(100_00).default(0),
   estimatedDays: z.number().int().min(1).max(90),
   message: z.string().max(2000).optional(),
+  buildPlan: buildPlanSchema,
 });
 
 export async function bidRoutes(app: FastifyInstance) {

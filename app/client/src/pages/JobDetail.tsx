@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import BuildPlatePlanner, { type BuildPlan } from '../components/BuildPlatePlanner';
 
 const ModelViewer = lazy(() => import('../components/ModelViewer'));
 
@@ -32,6 +33,25 @@ interface JobDetailData {
   files?: JobFile[];
 }
 
+interface BidBuildPlan {
+  plates: Array<{
+    machineId: string;
+    machineName: string;
+    parts: Array<{
+      fileId: string;
+      position: [number, number, number];
+      rotation: [number, number, number];
+    }>;
+  }>;
+}
+
+interface MachineData {
+  id: string;
+  name: string;
+  type: string;
+  buildVolume: { x: number; y: number; z: number };
+}
+
 interface BidData {
   id: string;
   amountCents: number;
@@ -40,6 +60,7 @@ interface BidData {
   message: string | null;
   status: string;
   createdAt: string;
+  buildPlan?: BidBuildPlan | null;
   printer: {
     id: string;
     averageRating: number;
@@ -80,6 +101,9 @@ export default function JobDetail() {
   const [bidError, setBidError] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [printerMachines, setPrinterMachines] = useState<MachineData[]>([]);
+  const [buildPlan, setBuildPlan] = useState<BuildPlan | null>(null);
+  const [showPlanner, setShowPlanner] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -97,6 +121,14 @@ export default function JobDetail() {
       .finally(() => setLoading(false));
   }, [id, user]);
 
+  // Fetch printer's machines for the build planner
+  useEffect(() => {
+    if (!user?.printer?.id) return;
+    api<MachineData[]>(`/printers/${user.printer.id}/machines`)
+      .then((data) => setPrinterMachines(Array.isArray(data) ? data : []))
+      .catch(() => setPrinterMachines([]));
+  }, [user?.printer?.id]);
+
   const handleBidSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBidError('');
@@ -109,6 +141,7 @@ export default function JobDetail() {
           shippingCostCents: Math.round(Number(bidShipping) * 100),
           estimatedDays: Number(bidDays),
           message: bidMessage || undefined,
+          buildPlan: buildPlan || undefined,
         }),
       });
       setBids((prev) => [...prev, bid].sort((a, b) => a.amountCents - b.amountCents));
@@ -116,6 +149,8 @@ export default function JobDetail() {
       setBidShipping('0');
       setBidDays('');
       setBidMessage('');
+      setBuildPlan(null);
+      setShowPlanner(false);
     } catch (err: unknown) {
       setBidError((err as { error?: string }).error || 'Failed to submit bid');
     } finally {
@@ -281,6 +316,14 @@ export default function JobDetail() {
                   <span className={`capitalize ${bid.status === 'accepted' ? 'text-green-600 font-medium' : bid.status === 'rejected' ? 'text-red-500' : ''}`}>{bid.status}</span>
                 </div>
                 {bid.message && <p className="text-sm text-gray-600 mt-2">{bid.message}</p>}
+                {bid.buildPlan && bid.buildPlan.plates.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-1.5 rounded-md w-fit">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    Build plan: {bid.buildPlan.plates.reduce((sum, p) => sum + p.parts.length, 0)} part{bid.buildPlan.plates.reduce((sum, p) => sum + p.parts.length, 0) !== 1 ? 's' : ''} across {bid.buildPlan.plates.length} plate{bid.buildPlan.plates.length !== 1 ? 's' : ''} on {new Set(bid.buildPlan.plates.map((p) => p.machineId)).size} machine{new Set(bid.buildPlan.plates.map((p) => p.machineId)).size !== 1 ? 's' : ''}
+                  </div>
+                )}
                 {isOwner && bid.status === 'pending' && (
                   <button onClick={() => handleAcceptBid(bid.id)} className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">Accept Bid</button>
                 )}
@@ -301,6 +344,29 @@ export default function JobDetail() {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Est. Days</label><input type="number" min="1" max="90" required value={bidDays} onChange={(e) => setBidDays(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
             </div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label><textarea rows={2} maxLength={2000} value={bidMessage} onChange={(e) => setBidMessage(e.target.value)} placeholder="DfAM advice, material suggestions, etc." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" /></div>
+            {files.filter((f) => f.fileName.toLowerCase().endsWith('.stl')).length > 0 && printerMachines.length > 0 && (
+              <div className="border border-gray-200 rounded-lg p-4">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanner((v) => !v)}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors w-full"
+                >
+                  <svg className={`w-4 h-4 transition-transform ${showPlanner ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  Build Plate Planner {buildPlan ? '(configured)' : '(optional)'}
+                </button>
+                {showPlanner && (
+                  <div className="mt-3">
+                    <BuildPlatePlanner
+                      files={files.filter((f) => f.fileName.toLowerCase().endsWith('.stl')).map((f) => ({ id: f.id, fileName: f.fileName, fileUrl: f.fileUrl }))}
+                      machines={printerMachines}
+                      onBuildPlanChange={setBuildPlan}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             <button type="submit" disabled={bidSubmitting} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50">{bidSubmitting ? 'Submitting...' : 'Submit Bid'}</button>
           </form>
         </div>
