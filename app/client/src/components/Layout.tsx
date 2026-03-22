@@ -13,6 +13,9 @@ export default function Layout() {
           </Link>
 
           <div className="flex items-center gap-6">
+            <Link to="/jobs" className="text-sm text-gray-600 hover:text-gray-900">
+              Print Jobs
+            </Link>
             <Link to="/printers" className="text-sm text-gray-600 hover:text-gray-900">
               Find Printers
             </Link>

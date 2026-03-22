@@ -6,6 +6,9 @@ import { PrismaClient } from '@prisma/client';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { printerRoutes } from './routes/printers.js';
+import { uploadRoutes } from './routes/uploads.js';
+import { jobRoutes } from './routes/jobs.js';
+import { startFileProcessingWorker } from './services/queue.js';
 
 const prisma = new PrismaClient();
 
@@ -53,6 +56,11 @@ async function start() {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(userRoutes, { prefix: '/api/v1/users' });
   await app.register(printerRoutes, { prefix: '/api/v1/printers' });
+  await app.register(uploadRoutes, { prefix: '/api/v1/uploads' });
+  await app.register(jobRoutes, { prefix: '/api/v1/jobs' });
+
+  // Start file processing worker
+  const worker = startFileProcessingWorker(prisma);
 
   // Serve static files in production
   if (process.env.NODE_ENV === 'production') {
@@ -72,6 +80,7 @@ async function start() {
   // Graceful shutdown
   const shutdown = async () => {
     app.log.info('Shutting down...');
+    await worker.close();
     await prisma.$disconnect();
     await app.close();
     process.exit(0);

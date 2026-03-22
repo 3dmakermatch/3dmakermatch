@@ -13,12 +13,15 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1014.0",
+    "@aws-sdk/s3-request-presigner": "^3.1014.0",
     "@fastify/cookie": "^11.0.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/rate-limit": "^10.0.0",
     "@fastify/static": "^9.0.0",
     "@prisma/client": "^6.4.0",
     "bcrypt": "^5.1.1",
+    "bullmq": "^5.71.0",
     "fastify": "^5.2.0",
     "jsonwebtoken": "^9.0.2",
     "zod": "^3.24.0"
