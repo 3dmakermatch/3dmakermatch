@@ -1,22 +1,7 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
 
-const s3 = new S3Client({
-  region: process.env.S3_REGION || 'us-east-1',
-  ...(process.env.S3_ENDPOINT && {
-    endpoint: process.env.S3_ENDPOINT,
-    forcePathStyle: true,
-  }),
-  ...(process.env.S3_ACCESS_KEY && {
-    credentials: {
-      accessKeyId: process.env.S3_ACCESS_KEY!,
-      secretAccessKey: process.env.S3_SECRET_KEY!,
-    },
-  }),
-});
+const S3_CONFIGURED = !!(process.env.S3_ACCESS_KEY && process.env.S3_BUCKET);
 
-const BUCKET = process.env.S3_BUCKET || 'printbid-data';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_EXTENSIONS = ['.stl', '.3mf', '.obj'];
 
@@ -28,41 +13,45 @@ export function validateFileUpload(fileName: string): { valid: boolean; error?: 
   return { valid: true };
 }
 
+export function generateFileKey(userId: string, fileName: string): string {
+  const fileId = crypto.randomUUID();
+  const ext = fileName.toLowerCase().slice(fileName.lastIndexOf('.'));
+  return `users/${userId}/models/${fileId}/original${ext}`;
+}
+
 export async function generatePresignedUploadUrl(
   userId: string,
   fileName: string,
-): Promise<{ uploadUrl: string; fileKey: string }> {
-  const fileId = crypto.randomUUID();
-  const ext = fileName.toLowerCase().slice(fileName.lastIndexOf('.'));
-  const fileKey = `users/${userId}/models/${fileId}/original${ext}`;
+): Promise<{ uploadUrl: string; fileKey: string; mode: 's3' | 'local' }> {
+  const fileKey = generateFileKey(userId, fileName);
 
-  const command = new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: fileKey,
-    ContentType: getContentType(ext),
-  });
+  if (S3_CONFIGURED) {
+    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+    const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
 
-  const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 900 }); // 15 min
+    const s3 = new S3Client({
+      region: process.env.S3_REGION || 'us-east-1',
+      ...(process.env.S3_ENDPOINT && {
+        endpoint: process.env.S3_ENDPOINT,
+        forcePathStyle: true,
+      }),
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY!,
+        secretAccessKey: process.env.S3_SECRET_KEY!,
+      },
+    });
 
-  return { uploadUrl, fileKey };
-}
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET!,
+      Key: fileKey,
+    });
 
-export async function generatePresignedDownloadUrl(fileKey: string): Promise<string> {
-  const command = new GetObjectCommand({
-    Bucket: BUCKET,
-    Key: fileKey,
-  });
-
-  return getSignedUrl(s3, command, { expiresIn: 3600 }); // 1 hour
-}
-
-function getContentType(ext: string): string {
-  switch (ext) {
-    case '.stl': return 'model/stl';
-    case '.3mf': return 'model/3mf';
-    case '.obj': return 'text/plain';
-    default: return 'application/octet-stream';
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
+    return { uploadUrl, fileKey, mode: 's3' };
   }
+
+  // Local mode: client will POST to /api/v1/uploads/file
+  return { uploadUrl: `/api/v1/uploads/file?key=${encodeURIComponent(fileKey)}`, fileKey, mode: 'local' };
 }
 
-export { MAX_FILE_SIZE, ALLOWED_EXTENSIONS };
+export { MAX_FILE_SIZE, ALLOWED_EXTENSIONS, S3_CONFIGURED };

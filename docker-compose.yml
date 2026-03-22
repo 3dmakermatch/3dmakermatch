@@ -14,6 +14,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:-3dmakermatch-jwt-secret-change-in-prod}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-3dmakermatch-refresh-secret-change-in-prod}
       - CLIENT_URL=https://app.3dmakermatch.dev.christofferson.family
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +65,7 @@ services:
 
 volumes:
   pgdata:
+  uploads:
 
 networks:
   proxy-net:

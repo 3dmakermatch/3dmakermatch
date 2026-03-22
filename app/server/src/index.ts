@@ -16,6 +16,7 @@ const app = Fastify({
   logger: {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   },
+  bodyLimit: 52_428_800, // 50MB for file uploads
 });
 
 declare module 'fastify' {
@@ -45,6 +46,11 @@ async function start() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+  });
+
+  // Accept raw binary uploads
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => {
+    done(null, body);
   });
 
   // Health check

@@ -32,21 +32,35 @@ export default function CreateJob() {
     try {
       // Step 1: Get presigned URL
       setUploadProgress('Getting upload URL...');
-      const presign = await api<{ uploadUrl: string; fileKey: string }>('/uploads/presign', {
+      const presign = await api<{ uploadUrl: string; fileKey: string; mode: string }>('/uploads/presign', {
         method: 'POST',
         body: JSON.stringify({ fileName: file.name, fileSize: file.size }),
       });
 
-      // Step 2: Upload file to S3
+      // Step 2: Upload file (S3 presigned PUT or local POST)
       setUploadProgress('Uploading file...');
-      const uploadRes = await fetch(presign.uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      });
-
-      if (!uploadRes.ok) {
-        throw { error: 'File upload failed' };
+      if (presign.mode === 's3') {
+        const uploadRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        });
+        if (!uploadRes.ok) {
+          throw { error: 'File upload failed' };
+        }
+      } else {
+        const uploadRes = await fetch(presign.uploadUrl, {
+          method: 'POST',
+          body: file,
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Authorization': `Bearer ${(await import('../lib/api')).getAccessToken()}`,
+          },
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({ error: 'Upload failed' }));
+          throw err;
+        }
       }
 
       // Step 3: Create job
