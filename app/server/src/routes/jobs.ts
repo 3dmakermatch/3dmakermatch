@@ -99,6 +99,8 @@ export async function jobRoutes(app: FastifyInstance) {
   });
 
   // List / browse print jobs
+  // TODO: If the authenticated user is a printer, compute match score for each job
+  // using findMatchingPrinters from services/matching.ts and include it in the response.
   app.get('/', async (request, reply) => {
     const query = listJobsSchema.safeParse(request.query);
     if (!query.success) {

@@ -212,6 +212,36 @@ export function jobDigestEmail(
   };
 }
 
+export function jobAlertEmail(
+  printerName: string,
+  jobTitle: string,
+  jobId: string,
+  matchScore: number,
+  matchReasons: string[],
+): { subject: string; html: string } {
+  const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+  const reasonList = matchReasons.map((r) => `<li>${r}</li>`).join('');
+  const subject = `New print job matching your capabilities: "${jobTitle}"`;
+  const html = baseLayout(`
+    <h2 style="margin:0 0 16px;color:#111827;font-size:22px;">Hi ${printerName}, a new job matches your capabilities!</h2>
+    <p style="color:#374151;line-height:1.6;">
+      A new print job has been posted that's a great fit for you:
+      <strong>"${jobTitle}"</strong>
+    </p>
+    <p style="color:#374151;line-height:1.6;">
+      <strong>Match score:</strong> ${matchScore}/100
+    </p>
+    ${reasonList ? `<ul style="color:#374151;line-height:1.8;">${reasonList}</ul>` : ''}
+    <p style="margin:24px 0;">
+      ${button('View Job', `${CLIENT_URL}/jobs/${jobId}`)}
+    </p>
+    <p style="color:#6b7280;font-size:13px;">
+      Place your bid before this job expires to secure the work.
+    </p>
+  `);
+  return { subject, html };
+}
+
 export function reviewReceivedEmail(
   jobTitle: string,
   rating: number,

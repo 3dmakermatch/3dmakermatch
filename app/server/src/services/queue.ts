@@ -2,6 +2,10 @@ import { Queue, Worker, type Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { readFile, mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { findMatchingPrinters } from './matching.js';
+import { sendEmail } from './email.js';
+import { jobAlertEmail } from './email-templates.js';
+import { notifyUser } from './websocket.js';
 
 const connection = {
   host: process.env.REDIS_URL?.replace('redis://', '').split(':')[0] || 'localhost',
@@ -375,11 +379,61 @@ export function startFileProcessingWorker(prisma: PrismaClient) {
         });
         const allProcessed = allFiles.every((f) => f.fileMetadata !== null);
         if (allProcessed) {
-          await prisma.printJob.update({
+          const biddingJob = await prisma.printJob.update({
             where: { id: jobId },
             data: { status: 'bidding' },
+            select: { id: true, title: true, materialPreferred: true, userId: true },
           });
           job.log('All files processed — job moved to bidding');
+
+          // Notify matching printers about the new job
+          try {
+            const matches = await findMatchingPrinters(prisma, {
+              id: biddingJob.id,
+              materialPreferred: biddingJob.materialPreferred,
+              userId: biddingJob.userId,
+            });
+
+            for (const match of matches) {
+              const prefs = match.emailPreferences;
+              const jobAlertPref = prefs.jobAlerts as string | undefined;
+
+              // Only notify printers with instant alerts (or no preference set)
+              if (!jobAlertPref || jobAlertPref === 'instant') {
+                const { subject, html } = jobAlertEmail(
+                  match.fullName,
+                  biddingJob.title,
+                  biddingJob.id,
+                  match.score,
+                  match.matchReasons,
+                );
+                await sendEmail({
+                  to: match.email,
+                  subject,
+                  html,
+                  category: 'jobAlerts',
+                  userId: match.userId,
+                  userPrefs: prefs as import('./email.js').EmailPreferences,
+                });
+              }
+
+              // Always send WebSocket notification regardless of email preference
+              notifyUser(match.userId, {
+                type: 'job:new_match',
+                data: {
+                  jobId: biddingJob.id,
+                  title: biddingJob.title,
+                  matchScore: match.score,
+                  matchReasons: match.matchReasons,
+                },
+              });
+            }
+
+            job.log(`Notified ${matches.length} matching printer(s)`);
+          } catch (notifyErr) {
+            // Non-fatal: log but don't fail the job processing
+            job.log(`Matching/notification error: ${notifyErr}`);
+          }
         }
 
         job.log('File processing complete');
