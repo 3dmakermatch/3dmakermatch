@@ -15,6 +15,7 @@ import ReviewForm from './pages/ReviewForm';
 import AuthCallback from './pages/AuthCallback';
 import NotificationSettings from './pages/NotificationSettings';
 import UnsubscribeConfirm from './pages/UnsubscribeConfirm';
+import StripeOnboard from './pages/StripeOnboard';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
@@ -39,6 +40,8 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
         <Route path="/unsubscribe" element={<UnsubscribeConfirm />} />
+        <Route path="/printers/stripe/onboard" element={<ProtectedRoute><StripeOnboard /></ProtectedRoute>} />
+        <Route path="/printers/stripe/callback" element={<ProtectedRoute><StripeOnboard /></ProtectedRoute>} />
       </Route>
       <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
         <Route index element={<AdminDashboard />} />

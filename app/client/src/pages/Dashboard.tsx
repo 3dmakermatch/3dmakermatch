@@ -25,6 +25,11 @@ interface PrinterMachine {
   buildVolume: { x: number; y: number; z: number };
 }
 
+interface PrinterProfile {
+  id: string;
+  stripeAccountId: string | null;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
   bidding: 'bg-green-100 text-green-700',
@@ -49,6 +54,7 @@ export default function Dashboard() {
   const [myJobs, setMyJobs] = useState<JobSummary[]>([]);
   const [openJobs, setOpenJobs] = useState<JobSummary[]>([]);
   const [machines, setMachines] = useState<PrinterMachine[]>([]);
+  const [printerProfile, setPrinterProfile] = useState<PrinterProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Add machine form state
@@ -75,14 +81,18 @@ export default function Dashboard() {
           const res = await api<JobResponse>('/jobs/mine');
           setMyJobs(res.data);
         } else if (user?.role === 'printer') {
-          const [jobsRes, machinesRes] = await Promise.all([
+          const [jobsRes, machinesRes, profileRes] = await Promise.all([
             api<JobResponse>('/jobs?limit=10'),
             printerId
               ? api<PrinterMachine[]>(`/printers/${printerId}/machines`).catch(() => [])
               : Promise.resolve([]),
+            printerId
+              ? api<PrinterProfile>(`/printers/${printerId}`).catch(() => null)
+              : Promise.resolve(null),
           ]);
           setOpenJobs(jobsRes.data);
           setMachines(machinesRes);
+          setPrinterProfile(profileRes);
         }
       } catch {
         // ignore
@@ -252,6 +262,35 @@ export default function Dashboard() {
 
       {user?.role === 'printer' && (
         <div className="space-y-6">
+          {/* Stripe payment status banner */}
+          {printerProfile && !printerProfile.stripeAccountId && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-yellow-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <p className="text-sm text-yellow-800">
+                  Set up Stripe to receive payments when buyers accept your bids.
+                </p>
+              </div>
+              <Link
+                to="/printers/stripe/onboard"
+                className="ml-4 shrink-0 bg-yellow-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-yellow-700 font-medium"
+              >
+                Set Up Payments
+              </Link>
+            </div>
+          )}
+          {printerProfile?.stripeAccountId && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+              <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm text-green-800 font-medium">Payments enabled</span>
+            </div>
+          )}
+
           {/* My Machines */}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-4">

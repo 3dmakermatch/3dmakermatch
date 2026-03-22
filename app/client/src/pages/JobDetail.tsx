@@ -99,6 +99,9 @@ export default function JobDetail() {
   const [bidMessage, setBidMessage] = useState('');
   const [bidSubmitting, setBidSubmitting] = useState(false);
   const [bidError, setBidError] = useState('');
+  const [acceptingBidId, setAcceptingBidId] = useState<string | null>(null);
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [printerMachines, setPrinterMachines] = useState<MachineData[]>([]);
@@ -159,11 +162,26 @@ export default function JobDetail() {
   };
 
   const handleAcceptBid = async (bidId: string) => {
+    setAcceptingBidId(bidId);
     try {
       await api(`/bids/${bidId}/accept`, { method: 'POST' });
-      window.location.reload();
+      const payRes = await api<{ order?: unknown; mock?: boolean; clientSecret?: string }>(
+        `/bids/${bidId}/pay`,
+        { method: 'POST' },
+      );
+      if (payRes.mock) {
+        setPaymentSuccess(true);
+        window.location.reload();
+      } else if (payRes.clientSecret) {
+        setPaymentClientSecret(payRes.clientSecret);
+      } else {
+        window.location.reload();
+      }
     } catch (err: unknown) {
-      alert((err as { error?: string }).error || 'Failed to accept bid');
+      const msg = (err as { error?: string }).error || 'Failed to accept bid';
+      alert(msg);
+    } finally {
+      setAcceptingBidId(null);
     }
   };
 
@@ -325,13 +343,34 @@ export default function JobDetail() {
                   </div>
                 )}
                 {isOwner && bid.status === 'pending' && (
-                  <button onClick={() => handleAcceptBid(bid.id)} className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">Accept Bid</button>
+                  <button
+                    onClick={() => handleAcceptBid(bid.id)}
+                    disabled={acceptingBidId === bid.id}
+                    className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {acceptingBidId === bid.id ? 'Processing...' : 'Accept Bid'}
+                  </button>
                 )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {paymentClientSecret && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h2 className="text-lg font-semibold mb-2 text-blue-900">Payment Required</h2>
+          <p className="text-blue-800 text-sm mb-4">
+            Your bid has been accepted. Complete your payment to confirm the order.
+          </p>
+          <div className="bg-white border border-blue-100 rounded p-3 font-mono text-xs text-gray-600 break-all mb-4">
+            Payment intent: {paymentClientSecret}
+          </div>
+          <p className="text-xs text-blue-700">
+            Full Stripe checkout integration coming soon. Please contact support to complete your payment.
+          </p>
+        </div>
+      )}
 
       {isPrinter && job.status === 'bidding' && !isExpired && !alreadyBid && !isOwner && (
         <div className="bg-white rounded-lg shadow p-6">
