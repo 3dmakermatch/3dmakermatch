@@ -8,7 +8,9 @@ const createJobSchema = z.object({
   description: z.string().max(5000).optional(),
   fileKey: z.string().min(1),
   fileName: z.string().min(1),
-  materialPreferred: z.string().max(50).optional(),
+  materialPreferred: z.union([z.string(), z.array(z.string())]).optional().transform(v =>
+    typeof v === 'string' ? [v] : (v || [])
+  ),
   quantity: z.number().int().min(1).max(10000).default(1),
   expiresInDays: z.number().int().min(1).max(30).default(7),
 });
@@ -26,7 +28,9 @@ const listJobsSchema = z.object({
 const updateJobSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(5000).optional(),
-  materialPreferred: z.string().max(50).optional(),
+  materialPreferred: z.union([z.string(), z.array(z.string())]).optional().transform(v =>
+    typeof v === 'string' ? [v] : (v || [])
+  ),
   status: z.enum(['cancelled']).optional(),
 });
 
@@ -89,7 +93,7 @@ export async function jobRoutes(app: FastifyInstance) {
       where.status = 'bidding';
     }
     if (material) {
-      where.materialPreferred = { contains: material, mode: 'insensitive' };
+      where.materialPreferred = { has: material };
     }
     if (city) {
       where.user = { printer: { addressCity: { contains: city, mode: 'insensitive' } } };
