@@ -1,7 +1,18 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, lazy, Suspense, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+
+const ModelViewer = lazy(() => import('../components/ModelViewer'));
+
+interface JobFile {
+  id: string;
+  fileUrl: string;
+  thumbnailUrl: string | null;
+  fileName: string;
+  fileMetadata: { printabilityScore?: number } | null;
+  displayOrder: number;
+}
 
 interface JobDetailData {
   id: string;
@@ -18,6 +29,7 @@ interface JobDetailData {
     printabilityScore?: number;
   } | null;
   user: { id: string; fullName: string };
+  files?: JobFile[];
 }
 
 interface BidData {
@@ -67,6 +79,7 @@ export default function JobDetail() {
   const [bidSubmitting, setBidSubmitting] = useState(false);
   const [bidError, setBidError] = useState('');
   const [newMessage, setNewMessage] = useState('');
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -145,6 +158,8 @@ export default function JobDetail() {
   const isExpired = new Date(job.expiresAt) < new Date();
   const alreadyBid = bids.some((b) => b.printer.user.id === user?.id);
   const meta = job.fileMetadata;
+  const files = job.files ?? [];
+  const activeFile = files[activeFileIndex] ?? null;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -172,6 +187,77 @@ export default function JobDetail() {
           )}
         </div>
       </div>
+
+      {files.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Files</h2>
+          {files.length > 1 && (
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              {files.map((f, i) => (
+                <button
+                  key={f.id}
+                  onClick={() => setActiveFileIndex(i)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg border text-sm font-mono truncate max-w-[160px] transition-colors ${
+                    i === activeFileIndex
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                  title={f.fileName}
+                >
+                  {f.fileName}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeFile && (
+            <div>
+              {activeFile.fileName.toLowerCase().endsWith('.stl') ? (
+                <Suspense
+                  fallback={
+                    <div className="h-64 w-full bg-gray-50 rounded-lg border flex items-center justify-center text-gray-400 text-sm">
+                      Loading preview…
+                    </div>
+                  }
+                >
+                  <ModelViewer
+                    fileUrl={activeFile.fileUrl}
+                    fileName={activeFile.fileName}
+                    className="h-64 w-full"
+                  />
+                </Suspense>
+              ) : activeFile.thumbnailUrl ? (
+                <img
+                  src={activeFile.thumbnailUrl}
+                  alt={activeFile.fileName}
+                  className="h-64 w-full object-contain bg-gray-50 rounded-lg border"
+                />
+              ) : (
+                <div className="h-64 w-full bg-gray-50 rounded-lg border flex flex-col items-center justify-center text-gray-400 gap-2">
+                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm font-mono">{activeFile.fileName}</span>
+                </div>
+              )}
+              {activeFile.fileMetadata?.printabilityScore !== undefined && (
+                <div className="mt-2 text-sm text-gray-500">
+                  Printability:{' '}
+                  <span
+                    className={`font-medium ${
+                      activeFile.fileMetadata.printabilityScore >= 80
+                        ? 'text-green-600'
+                        : 'text-yellow-600'
+                    }`}
+                  >
+                    {activeFile.fileMetadata.printabilityScore}/100
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4">Bids</h2>
