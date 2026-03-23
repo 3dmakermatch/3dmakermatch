@@ -19,3 +19,14 @@ vi.mock('bullmq', () => {
   }
   return { Queue: MockQueue, Worker: MockWorker };
 });
+
+// Mock redis to prevent connection attempts
+vi.mock('redis', () => ({
+  createClient: vi.fn().mockReturnValue({
+    connect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    setEx: vi.fn().mockResolvedValue('OK'),
+    getDel: vi.fn().mockResolvedValue(null),
+    quit: vi.fn().mockResolvedValue(undefined),
+  }),
+}));

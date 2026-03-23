@@ -22,6 +22,7 @@ export default defineConfig({
         singleFork: true,
       },
     },
-    teardownTimeout: 5000,
+    teardownTimeout: 10000,
+    forceRerunTriggers: [],
   },
 });
