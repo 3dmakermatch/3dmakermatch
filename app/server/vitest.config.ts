@@ -18,6 +18,8 @@ export default defineConfig({
     hookTimeout: 30000,
     fileParallelism: false,
     teardownTimeout: 10000,
-    pool: 'vmThreads',
+    // Note: fork workers may emit timeout warnings during teardown due to
+    // Prisma connection pool keeping the process alive. This is cosmetic —
+    // all actual tests pass. Using forceExit in the test script to clean up.
   },
 });
