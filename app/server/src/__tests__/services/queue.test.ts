@@ -60,7 +60,7 @@ import { fileProcessingQueue, startFileProcessingWorker } from '../../services/q
 import { readFile } from 'fs/promises';
 
 // Get typed mock references
-const mockReadFile = vi.mocked(readFile);
+const mockReadFile = vi.mocked(readFile) as unknown as { mockResolvedValueOnce: (v: Buffer) => void; mockRejectedValueOnce: (e: Error) => void };
 
 // ── Helper: build a minimal valid binary STL buffer ───────────────────────────
 function makeBinaryStl(triangles: Array<{
