@@ -18,5 +18,6 @@ export default defineConfig({
     hookTimeout: 30000,
     fileParallelism: false,
     teardownTimeout: 10000,
+    pool: 'vmThreads',
   },
 });
