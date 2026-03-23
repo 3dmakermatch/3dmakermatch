@@ -8,16 +8,14 @@ process.env.NODE_ENV = 'test';
 
 // Mock BullMQ globally to prevent Redis connections in integration tests
 vi.mock('bullmq', () => {
-  const mockAdd = vi.fn().mockResolvedValue({ id: 'mock-job-id' });
-  return {
-    Queue: vi.fn().mockImplementation(() => ({
-      add: mockAdd,
-      close: vi.fn().mockResolvedValue(undefined),
-      obliterate: vi.fn().mockResolvedValue(undefined),
-    })),
-    Worker: vi.fn().mockImplementation(() => ({
-      on: vi.fn().mockReturnThis(),
-      close: vi.fn().mockResolvedValue(undefined),
-    })),
-  };
+  function MockQueue() {
+    (this as any).add = vi.fn().mockResolvedValue({ id: 'mock-job-id' });
+    (this as any).close = vi.fn().mockResolvedValue(undefined);
+    (this as any).obliterate = vi.fn().mockResolvedValue(undefined);
+  }
+  function MockWorker() {
+    (this as any).on = vi.fn().mockReturnThis();
+    (this as any).close = vi.fn().mockResolvedValue(undefined);
+  }
+  return { Queue: MockQueue, Worker: MockWorker };
 });
