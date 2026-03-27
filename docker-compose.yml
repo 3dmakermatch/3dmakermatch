@@ -14,7 +14,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-3dmakermatch-jwt-secret-change-in-prod}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-3dmakermatch-refresh-secret-change-in-prod}
-      - CLIENT_URL=https://3dmakermatch.dev.christofferson.family
+      - CLIENT_URL=https://3dmakermatch.dev.dtsaaslabs.com
       - UPLOAD_DIR=/app/uploads
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
@@ -22,7 +22,7 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-noreply@3dmakermatch.dev}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - SERVER_URL=${SERVER_URL:-https://3dmakermatch.dev.christofferson.family}
+      - SERVER_URL=${SERVER_URL:-https://3dmakermatch.dev.dtsaaslabs.com}
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -32,7 +32,7 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.3dmakermatch.rule=Host(`3dmakermatch.dev.christofferson.family`)"
+      - "traefik.http.routers.3dmakermatch.rule=Host(`3dmakermatch.dev.dtsaaslabs.com`)"
       - "traefik.http.routers.3dmakermatch.entrypoints=web"
       - "traefik.http.services.3dmakermatch.loadbalancer.server.port=3000"
     networks:
