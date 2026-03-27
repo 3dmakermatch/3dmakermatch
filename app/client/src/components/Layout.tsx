@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -29,6 +30,7 @@ export default function Layout() {
                   Dashboard
                 </Link>
                 <div className="flex items-center gap-3">
+                  <NotificationBell />
                   <span className="text-sm text-gray-500">{user.fullName}</span>
                   <button
                     onClick={logout}

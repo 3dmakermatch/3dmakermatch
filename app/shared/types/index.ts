@@ -57,7 +57,10 @@ export interface Printer {
   isVerified: boolean;
   capabilities: PrinterCapabilities;
   averageRating: number;
+  stripeAccountId?: string;
+  lastDigestAt?: string;
   user?: User;
+  machines?: PrinterMachine[];
 }
 
 export interface PrinterCapabilities {
@@ -78,9 +81,10 @@ export interface PrintJob {
   userId: string;
   title: string;
   description: string | null;
-  fileUrl: string;
+  fileUrl: string | null;
   thumbnailUrl: string | null;
-  materialPreferred: string | null;
+  materialPreferred: string[];
+  extensionCount: number;
   quantity: number;
   status: JobStatus;
   expiresAt: string;
@@ -88,6 +92,7 @@ export interface PrintJob {
   fileMetadata?: FileMetadata;
   bidCount?: number;
   user?: User;
+  files?: JobFile[];
 }
 
 export interface FileMetadata {
@@ -111,6 +116,7 @@ export interface Bid {
   status: BidStatus;
   createdAt: string;
   printer?: Printer;
+  buildPlan?: BuildPlan;
 }
 
 export interface Order {
@@ -122,7 +128,9 @@ export interface Order {
   stripePaymentIntentId: string | null;
   status: OrderStatus;
   trackingNumber: string | null;
+  platformFeeCents: number;
   createdAt: string;
+  updatedAt: string;
   job?: PrintJob;
   bid?: Bid;
 }
@@ -177,4 +185,63 @@ export interface RegisterRequest {
   password: string;
   fullName: string;
   role: UserRole.BUYER | UserRole.PRINTER;
+}
+
+export interface JobFile {
+  id: string;
+  jobId: string;
+  fileUrl: string;
+  thumbnailUrl: string | null;
+  fileName: string;
+  fileMetadata: FileMetadata | null;
+  displayOrder: number;
+}
+
+export interface PrinterMachine {
+  id: string;
+  printerId: string;
+  name: string;
+  type: string;
+  materials: string[];
+  buildVolume: { x: number; y: number; z: number };
+}
+
+export interface BuildPlan {
+  plates: BuildPlate[];
+}
+
+export interface BuildPlate {
+  machineId: string;
+  machineName: string;
+  parts: PlacedPart[];
+}
+
+export interface PlacedPart {
+  fileId: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+}
+
+export interface EmailPreferences {
+  bids: boolean;
+  orders: boolean;
+  messages: boolean;
+  reviews: boolean;
+  marketing: boolean;
+  jobAlerts: 'instant' | 'hourly' | 'daily' | 'weekly' | 'off';
+}
+
+export type WSEventType =
+  | 'bid:new'
+  | 'bid:accepted'
+  | 'bid:rejected'
+  | 'order:status'
+  | 'message:new'
+  | 'review:new'
+  | 'job:extended';
+
+export interface WSEvent {
+  type: WSEventType;
+  data: Record<string, unknown>;
+  timestamp: string;
 }

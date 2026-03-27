@@ -1,6 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { sendEmail } from '../services/email.js';
+import { newMessageEmail } from '../services/email-templates.js';
+import { notifyUser } from '../services/websocket.js';
 
 const sendMessageSchema = z.object({
   jobId: z.string().uuid(),
@@ -53,6 +56,16 @@ export async function messageRoutes(app: FastifyInstance) {
           sender: { select: { id: true, fullName: true } },
         },
       });
+
+      const receiver = await app.prisma.user.findUnique({
+        where: { id: receiverId },
+        select: { id: true, email: true, emailPreferences: true },
+      });
+      if (receiver) {
+        const tpl = newMessageEmail(job.title, message.sender.fullName);
+        sendEmail({ to: receiver.email, subject: tpl.subject, html: tpl.html, category: 'messages', userId: receiver.id, userPrefs: receiver.emailPreferences as any }).catch(() => {});
+        notifyUser(receiverId, { type: 'message:new', data: { messageId: message.id, jobId } });
+      }
 
       return reply.status(201).send(message);
     },

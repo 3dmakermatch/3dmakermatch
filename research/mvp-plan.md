@@ -58,7 +58,7 @@ The repository currently has only an `init/` directory with research files. We n
 - **Simple app/client + app/server structure**: No monorepo tooling (Nx/Turborepo) - too much overhead for small team
 - **app/shared/types/**: Shared TypeScript interfaces between client and server (job, bid, user types)
 - **Prisma ORM**: Type-safe database access, migration management, matches research recommendation
-- **Landing page goes in marketing/**: Dashboard auto-detects and serves it at marketing.3dmakermatch.dev.christofferson.family
+- **Landing page goes in marketing/**: Dashboard auto-detects and serves it at marketing.3dmakermatch.dev.dtsaaslabs.com
 
 ### dev-master.json
 ```json
@@ -89,7 +89,7 @@ Based on the fullstack template from dev-master-site, with:
 - `db` service: postgis/postgis:16-3.4 (PostgreSQL + PostGIS for geo queries)
 - `redis` service: redis:7-alpine (session cache, job queue, future real-time)
 - All on `proxy-net` external network
-- Traefik labels: `app.3dmakermatch.dev.christofferson.family`
+- Traefik labels: `app.3dmakermatch.dev.dtsaaslabs.com`
 - OAuth middleware applied via `oauth-auth`
 - Memory limit: 1g for app
 

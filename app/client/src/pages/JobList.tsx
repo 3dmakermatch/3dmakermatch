@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -27,25 +27,67 @@ interface JobResponse {
   totalPages: number;
 }
 
+const NEAR_ME_RADIUS_MILES = 50;
+
 export default function JobList() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [materialFilter, setMaterialFilter] = useState('');
+  const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  const fetchJobs = useCallback(
+    (coords?: { lat: number; lng: number } | null) => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (materialFilter) params.set('material', materialFilter);
+      if (coords) {
+        params.set('lat', String(coords.lat));
+        params.set('lng', String(coords.lng));
+        params.set('radius', String(NEAR_ME_RADIUS_MILES));
+      }
+      api<JobResponse>(`/jobs?${params}`)
+        .then((res) => {
+          setJobs(res.data);
+          setTotal(res.total);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    },
+    [materialFilter],
+  );
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (materialFilter) params.set('material', materialFilter);
+    fetchJobs(geoCoords);
+  }, [fetchJobs, geoCoords]);
 
-    api<JobResponse>(`/jobs?${params}`)
-      .then((res) => {
-        setJobs(res.data);
-        setTotal(res.total);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [materialFilter]);
+  const handleNearMe = () => {
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGeoError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setGeoCoords(coords);
+      },
+      (err) => {
+        console.warn('[GEOLOCATION]', err);
+        setGeoError('Could not get your location. Please allow location access and try again.');
+      },
+    );
+  };
+
+  const handleClearNearMe = () => {
+    setGeoCoords(null);
+    setGeoError(null);
+  };
 
   if (loading) {
     return (
@@ -72,7 +114,7 @@ export default function JobList() {
         )}
       </div>
 
-      <div className="mb-6">
+      <div className="flex items-center gap-3 mb-6">
         <select
           value={materialFilter}
           onChange={(e) => setMaterialFilter(e.target.value)}
@@ -83,7 +125,35 @@ export default function JobList() {
             <option key={m} value={m}>{m}</option>
           ))}
         </select>
+
+        {geoCoords ? (
+          <button
+            onClick={handleClearNearMe}
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Clear Location Filter
+          </button>
+        ) : (
+          <button
+            onClick={handleNearMe}
+            className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium"
+          >
+            Near Me
+          </button>
+        )}
       </div>
+
+      {geoError && (
+        <div className="mb-4 px-4 py-3 bg-red-50 text-red-700 rounded-lg text-sm">
+          {geoError}
+        </div>
+      )}
+
+      {geoCoords && (
+        <div className="mb-4 px-4 py-3 bg-blue-50 text-blue-700 rounded-lg text-sm">
+          Showing jobs within {NEAR_ME_RADIUS_MILES} miles of your location.
+        </div>
+      )}
 
       {jobs.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">

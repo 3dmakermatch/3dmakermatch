@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { sendEmail } from '../services/email.js';
+import { reviewReceivedEmail } from '../services/email-templates.js';
+import { notifyUser } from '../services/websocket.js';
+import { recalculateTrustScore } from '../services/trust.js';
 
 const createReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -14,7 +18,7 @@ export async function reviewRoutes(app: FastifyInstance) {
     handler: async (request, reply) => {
       const order = await app.prisma.order.findUnique({
         where: { id: request.params.orderId },
-        include: { printer: true, review: true },
+        include: { printer: true, review: true, job: { select: { title: true } } },
       });
 
       if (!order) {
@@ -64,6 +68,19 @@ export async function reviewRoutes(app: FastifyInstance) {
 
         return created;
       });
+
+      const revieweeUser = await app.prisma.user.findUnique({
+        where: { id: order.printer.userId },
+        select: { id: true, email: true, emailPreferences: true },
+      });
+      if (revieweeUser) {
+        const tpl = reviewReceivedEmail(order.job.title, body.data.rating);
+        sendEmail({ to: revieweeUser.email, subject: tpl.subject, html: tpl.html, category: 'reviews', userId: revieweeUser.id, userPrefs: revieweeUser.emailPreferences as any }).catch(() => {});
+        notifyUser(revieweeUser.id, { type: 'review:new', data: { reviewId: review.id, orderId: order.id } });
+      }
+
+      // Recalculate trust score now that a new review has been recorded
+      recalculateTrustScore(app.prisma, order.printerId).catch(() => {});
 
       return reply.status(201).send(review);
     },

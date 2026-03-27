@@ -6,9 +6,14 @@ import { fileProcessingQueue } from '../services/queue.js';
 const createJobSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
-  fileKey: z.string().min(1),
-  fileName: z.string().min(1),
-  materialPreferred: z.string().max(50).optional(),
+  files: z.array(z.object({
+    fileKey: z.string().min(1),
+    fileName: z.string().min(1),
+    displayOrder: z.number().int().min(0).default(0),
+  })).min(1, 'At least one file is required'),
+  materialPreferred: z.union([z.string(), z.array(z.string())]).optional().transform(v =>
+    typeof v === 'string' ? [v] : (v || [])
+  ),
   quantity: z.number().int().min(1).max(10000).default(1),
   expiresInDays: z.number().int().min(1).max(30).default(7),
 });
@@ -21,12 +26,17 @@ const listJobsSchema = z.object({
   city: z.string().optional(),
   sort_by: z.enum(['created_at', 'expires_at']).default('created_at'),
   order: z.enum(['asc', 'desc']).default('desc'),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).optional(),
 });
 
 const updateJobSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(5000).optional(),
-  materialPreferred: z.string().max(50).optional(),
+  materialPreferred: z.union([z.string(), z.array(z.string())]).optional().transform(v =>
+    typeof v === 'string' ? [v] : (v || [])
+  ),
   status: z.enum(['cancelled']).optional(),
 });
 
@@ -40,7 +50,7 @@ export async function jobRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
       }
 
-      const { title, description, fileKey, fileName, materialPreferred, quantity, expiresInDays } = body.data;
+      const { title, description, files, materialPreferred, quantity, expiresInDays } = body.data;
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -50,36 +60,54 @@ export async function jobRoutes(app: FastifyInstance) {
           userId: request.userId!,
           title,
           description,
-          fileUrl: fileKey,
           materialPreferred,
           quantity,
           status: 'draft',
           expiresAt,
+          files: {
+            create: files.map(({ fileKey, fileName, displayOrder }) => ({
+              fileUrl: fileKey,
+              fileName,
+              displayOrder,
+            })),
+          },
         },
         include: {
           user: { select: { id: true, fullName: true } },
+          files: {
+            select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
       });
 
-      // Queue file for processing
-      await fileProcessingQueue.add('process-file', {
-        jobId: job.id,
-        fileKey,
-        fileName,
-      });
+      // Queue each file for processing
+      await Promise.all(
+        job.files.map((jobFile, idx) => {
+          const { fileKey, fileName } = files[idx];
+          return fileProcessingQueue.add('process-file', {
+            jobId: job.id,
+            fileId: jobFile.id,
+            fileKey,
+            fileName,
+          });
+        }),
+      );
 
       return reply.status(201).send(job);
     },
   });
 
   // List / browse print jobs
+  // TODO: If the authenticated user is a printer, compute match score for each job
+  // using findMatchingPrinters from services/matching.ts and include it in the response.
   app.get('/', async (request, reply) => {
     const query = listJobsSchema.safeParse(request.query);
     if (!query.success) {
       return reply.status(400).send({ error: query.error.issues[0].message, code: 400 });
     }
 
-    const { page, limit, status, material, city, sort_by, order } = query.data;
+    const { page, limit, status, material, city, sort_by, order, lat, lng, radius } = query.data;
 
     const where: Record<string, unknown> = {};
     if (status) {
@@ -89,10 +117,25 @@ export async function jobRoutes(app: FastifyInstance) {
       where.status = 'bidding';
     }
     if (material) {
-      where.materialPreferred = { contains: material, mode: 'insensitive' };
+      where.materialPreferred = { has: material };
     }
     if (city) {
       where.user = { printer: { addressCity: { contains: city, mode: 'insensitive' } } };
+    }
+    // Proximity filter: limit to jobs posted by users whose printer is within radius
+    if (lat !== undefined && lng !== undefined && radius !== undefined) {
+      const radiusMeters = radius * 1609.34;
+      const nearbyPrinters = await app.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT p.id FROM printers p
+        WHERE ST_DWithin(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography,
+          ${radiusMeters}
+        )
+        AND p.latitude IS NOT NULL
+      `;
+      const nearbyUserIds = nearbyPrinters.map((p) => p.id);
+      where.user = { printer: { id: { in: nearbyUserIds } } };
     }
     // Only show non-expired jobs
     where.expiresAt = { gt: new Date() };
@@ -103,6 +146,10 @@ export async function jobRoutes(app: FastifyInstance) {
         include: {
           user: { select: { id: true, fullName: true } },
           _count: { select: { bids: true } },
+          files: {
+            select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+            orderBy: { displayOrder: 'asc' },
+          },
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -133,6 +180,9 @@ export async function jobRoutes(app: FastifyInstance) {
       include: {
         user: { select: { id: true, fullName: true } },
         _count: { select: { bids: true } },
+        files: {
+          orderBy: { displayOrder: 'asc' },
+        },
       },
     });
 
@@ -203,6 +253,10 @@ export async function jobRoutes(app: FastifyInstance) {
           where,
           include: {
             _count: { select: { bids: true } },
+            files: {
+              select: { id: true, fileName: true, thumbnailUrl: true, displayOrder: true },
+              orderBy: { displayOrder: 'asc' },
+            },
           },
           skip: (page - 1) * limit,
           take: limit,

@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { createConnectAccount } from '../services/stripe.js';
+import { geocodeAddress } from '../services/geocoding.js';
 
 const createPrinterSchema = z.object({
   bio: z.string().max(2000).optional(),
@@ -28,6 +30,9 @@ const listPrintersSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   verified: z.coerce.boolean().optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  radius: z.coerce.number().min(1).max(500).optional(),
 });
 
 export async function printerRoutes(app: FastifyInstance) {
@@ -71,7 +76,29 @@ export async function printerRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: query.error.issues[0].message, code: 400 });
     }
 
-    const { page, limit, city, state, verified } = query.data;
+    const { page, limit, city, state, verified, lat, lng, radius } = query.data;
+
+    // Proximity search using PostGIS
+    if (lat !== undefined && lng !== undefined && radius !== undefined) {
+      const radiusMeters = radius * 1609.34;
+      const printers = await app.prisma.$queryRaw`
+        SELECT p.*, u.full_name, u.id as user_id
+        FROM printers p
+        JOIN users u ON p.user_id = u.id
+        WHERE ST_DWithin(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography,
+          ${radiusMeters}
+        )
+        AND p.latitude IS NOT NULL
+        ORDER BY ST_Distance(
+          ST_MakePoint(p.longitude, p.latitude)::geography,
+          ST_MakePoint(${Number(lng)}, ${Number(lat)})::geography
+        )
+      `;
+      return { data: printers };
+    }
+
     const where: Record<string, unknown> = {};
     if (city) where.addressCity = { contains: city, mode: 'insensitive' };
     if (state) where.addressState = { contains: state, mode: 'insensitive' };
@@ -106,12 +133,161 @@ export async function printerRoutes(app: FastifyInstance) {
       include: {
         user: { select: { id: true, fullName: true, createdAt: true } },
         benchmarks: true,
+        machines: true,
       },
     });
     if (!printer) {
       return reply.status(404).send({ error: 'Printer not found', code: 404 });
     }
     return printer;
+  });
+
+  // Stripe Connect onboarding
+  app.post('/stripe/onboard', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findFirst({
+        where: { userId: request.userId! },
+        include: { user: true },
+      });
+      if (!printer) return reply.status(404).send({ error: 'Printer profile not found', code: 404 });
+      if (printer.stripeAccountId) return reply.status(400).send({ error: 'Already onboarded', code: 400 });
+
+      const { accountId, onboardingUrl } = await createConnectAccount(printer.id, printer.user.email);
+      await app.prisma.printer.update({
+        where: { id: printer.id },
+        data: { stripeAccountId: accountId },
+      });
+      return { onboardingUrl };
+    },
+  });
+
+  // List machines for a printer (public)
+  app.get<{ Params: { id: string } }>('/:id/machines', async (request, reply) => {
+    const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+    if (!printer) {
+      return reply.status(404).send({ error: 'Printer not found', code: 404 });
+    }
+    const machines = await app.prisma.printerMachine.findMany({
+      where: { printerId: request.params.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    return machines;
+  });
+
+  const createMachineSchema = z.object({
+    name: z.string().min(1).max(100),
+    type: z.string().min(1).max(50),
+    materials: z.array(z.string()).default([]),
+    buildVolume: z.object({
+      x: z.number().positive(),
+      y: z.number().positive(),
+      z: z.number().positive(),
+    }),
+  });
+
+  const updateMachineSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    type: z.string().min(1).max(50).optional(),
+    materials: z.array(z.string()).optional(),
+    buildVolume: z.object({
+      x: z.number().positive(),
+      y: z.number().positive(),
+      z: z.number().positive(),
+    }).optional(),
+  });
+
+  // Create a machine for a printer
+  app.post<{ Params: { id: string } }>('/:id/machines', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const body = createMachineSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
+      }
+
+      const machine = await app.prisma.printerMachine.create({
+        data: {
+          printerId: request.params.id,
+          name: body.data.name,
+          type: body.data.type,
+          materials: body.data.materials,
+          buildVolume: body.data.buildVolume,
+        },
+      });
+
+      return reply.status(201).send(machine);
+    },
+  });
+
+  // Update a machine
+  app.put<{ Params: { id: string; machineId: string } }>('/:id/machines/:machineId', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const machine = await app.prisma.printerMachine.findUnique({
+        where: { id: request.params.machineId },
+      });
+      if (!machine || machine.printerId !== request.params.id) {
+        return reply.status(404).send({ error: 'Machine not found', code: 404 });
+      }
+
+      const body = updateMachineSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
+      }
+
+      const updated = await app.prisma.printerMachine.update({
+        where: { id: request.params.machineId },
+        data: {
+          ...(body.data.name !== undefined && { name: body.data.name }),
+          ...(body.data.type !== undefined && { type: body.data.type }),
+          ...(body.data.materials !== undefined && { materials: body.data.materials }),
+          ...(body.data.buildVolume !== undefined && { buildVolume: body.data.buildVolume }),
+        },
+      });
+
+      return updated;
+    },
+  });
+
+  // Delete a machine
+  app.delete<{ Params: { id: string; machineId: string } }>('/:id/machines/:machineId', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const printer = await app.prisma.printer.findUnique({ where: { id: request.params.id } });
+      if (!printer) {
+        return reply.status(404).send({ error: 'Printer not found', code: 404 });
+      }
+      if (printer.userId !== request.userId) {
+        return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      }
+
+      const machine = await app.prisma.printerMachine.findUnique({
+        where: { id: request.params.machineId },
+      });
+      if (!machine || machine.printerId !== request.params.id) {
+        return reply.status(404).send({ error: 'Machine not found', code: 404 });
+      }
+
+      await app.prisma.printerMachine.delete({ where: { id: request.params.machineId } });
+      return reply.status(204).send();
+    },
   });
 
   // Update printer profile
@@ -133,12 +309,25 @@ export async function printerRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: body.error.issues[0].message, code: 400 });
       }
 
+      const updateData: Record<string, unknown> = {
+        ...body.data,
+        capabilities: body.data.capabilities ?? undefined,
+      };
+
+      // Auto-geocode when city or state is provided
+      const newCity = body.data.addressCity ?? printer.addressCity;
+      const newState = body.data.addressState ?? printer.addressState;
+      if ((body.data.addressCity || body.data.addressState) && newCity && newState) {
+        const coords = await geocodeAddress(newCity, newState);
+        if (coords) {
+          updateData.latitude = coords.lat;
+          updateData.longitude = coords.lng;
+        }
+      }
+
       const updated = await app.prisma.printer.update({
         where: { id: request.params.id },
-        data: {
-          ...body.data,
-          capabilities: body.data.capabilities ?? undefined,
-        },
+        data: updateData as Parameters<typeof app.prisma.printer.update>[0]['data'],
         include: { user: { select: { id: true, fullName: true } } },
       });
 

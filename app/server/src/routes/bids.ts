@@ -1,12 +1,29 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
+import { createPaymentIntent, isMockStripe } from '../services/stripe.js';
+import { sendEmail } from '../services/email.js';
+import { newBidEmail, bidAcceptedEmail, bidRejectedEmail } from '../services/email-templates.js';
+import { notifyUser } from '../services/websocket.js';
+
+const buildPlanSchema = z.object({
+  plates: z.array(z.object({
+    machineId: z.string(),
+    machineName: z.string(),
+    parts: z.array(z.object({
+      fileId: z.string(),
+      position: z.tuple([z.number(), z.number(), z.number()]),
+      rotation: z.tuple([z.number(), z.number(), z.number()]),
+    })),
+  })),
+}).optional();
 
 const createBidSchema = z.object({
   amountCents: z.number().int().min(100).max(10_000_00),
   shippingCostCents: z.number().int().min(0).max(100_00).default(0),
   estimatedDays: z.number().int().min(1).max(90),
   message: z.string().max(2000).optional(),
+  buildPlan: buildPlanSchema,
 });
 
 export async function bidRoutes(app: FastifyInstance) {
@@ -65,6 +82,47 @@ export async function bidRoutes(app: FastifyInstance) {
           },
         },
       });
+
+      // Anti-sniping: extend deadline if bid placed within 5 minutes of expiry
+      const timeUntilExpiry = job.expiresAt.getTime() - Date.now();
+      const fiveMinutes = 5 * 60 * 1000;
+      if (timeUntilExpiry > 0 && timeUntilExpiry < fiveMinutes && job.extensionCount < 3) {
+        const newExpiry = new Date(job.expiresAt.getTime() + fiveMinutes);
+        await app.prisma.printJob.update({
+          where: { id: job.id },
+          data: {
+            expiresAt: newExpiry,
+            extensionCount: job.extensionCount + 1,
+          },
+        });
+
+        // Notify all existing bidders + job owner about the extension
+        const existingBids = await app.prisma.bid.findMany({
+          where: { jobId: job.id },
+          include: { printer: { select: { userId: true } } },
+        });
+
+        for (const existingBid of existingBids) {
+          notifyUser(existingBid.printer.userId, {
+            type: 'job:extended',
+            data: { jobId: job.id, newExpiresAt: newExpiry.toISOString(), extensionCount: job.extensionCount + 1 },
+          });
+        }
+        notifyUser(job.userId, {
+          type: 'job:extended',
+          data: { jobId: job.id, newExpiresAt: newExpiry.toISOString(), extensionCount: job.extensionCount + 1 },
+        });
+      }
+
+      const jobOwner = await app.prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { id: true, email: true, emailPreferences: true },
+      });
+      if (jobOwner) {
+        const tpl = newBidEmail(job.title, bid.amountCents / 100, bid.printer.user.fullName);
+        sendEmail({ to: jobOwner.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: jobOwner.id, userPrefs: jobOwner.emailPreferences as any }).catch(() => {});
+        notifyUser(jobOwner.id, { type: 'bid:new', data: { jobId: job.id, bidId: bid.id } });
+      }
 
       return reply.status(201).send(bid);
     },
@@ -140,6 +198,16 @@ export async function bidRoutes(app: FastifyInstance) {
         return [accepted, newOrder];
       });
 
+      const printerUser = await app.prisma.printer.findUnique({
+        where: { id: bid.printerId },
+        include: { user: { select: { id: true, email: true, emailPreferences: true } } },
+      });
+      if (printerUser) {
+        const tpl = bidAcceptedEmail(bid.job.title);
+        sendEmail({ to: printerUser.user.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: printerUser.user.id, userPrefs: printerUser.user.emailPreferences as any }).catch(() => {});
+        notifyUser(printerUser.user.id, { type: 'bid:accepted', data: { bidId: bid.id, jobId: bid.jobId } });
+      }
+
       return { bid: updatedBid, order };
     },
   });
@@ -167,7 +235,48 @@ export async function bidRoutes(app: FastifyInstance) {
         data: { status: 'rejected' },
       });
 
+      const printerUser = await app.prisma.printer.findUnique({
+        where: { id: bid.printerId },
+        include: { user: { select: { id: true, email: true, emailPreferences: true } } },
+      });
+      if (printerUser) {
+        const tpl = bidRejectedEmail(bid.job.title);
+        sendEmail({ to: printerUser.user.email, subject: tpl.subject, html: tpl.html, category: 'bids', userId: printerUser.user.id, userPrefs: printerUser.user.emailPreferences as any }).catch(() => {});
+        notifyUser(printerUser.user.id, { type: 'bid:rejected', data: { bidId: bid.id, jobId: bid.jobId } });
+      }
+
       return updated;
+    },
+  });
+
+  // Payment for accepted bid
+  app.post<{ Params: { id: string } }>('/bids/:id/pay', {
+    preHandler: [authenticate],
+    handler: async (request, reply) => {
+      const bid = await app.prisma.bid.findUnique({
+        where: { id: request.params.id },
+        include: { job: true, printer: true },
+      });
+      if (!bid) return reply.status(404).send({ error: 'Bid not found', code: 404 });
+      if (bid.job.userId !== request.userId) return reply.status(403).send({ error: 'Not authorized', code: 403 });
+      if (bid.status !== 'accepted') return reply.status(400).send({ error: 'Bid must be accepted first', code: 400 });
+
+      const platformFeeCents = 499;
+      const totalCents = bid.amountCents + bid.shippingCostCents;
+
+      if (isMockStripe()) {
+        const order = await app.prisma.$transaction(async (tx) => {
+          const o = await tx.order.create({
+            data: { jobId: bid.jobId, bidId: bid.id, buyerId: request.userId!, printerId: bid.printerId, platformFeeCents, status: 'paid' },
+          });
+          await tx.printJob.update({ where: { id: bid.jobId }, data: { status: 'active' } });
+          return o;
+        });
+        return { order, mock: true };
+      }
+
+      const { clientSecret, paymentIntentId } = await createPaymentIntent(totalCents, platformFeeCents, bid.printer.stripeAccountId || '');
+      return { clientSecret, paymentIntentId, totalCents: totalCents + platformFeeCents };
     },
   });
 
